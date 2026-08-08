@@ -25,13 +25,12 @@ function App() {
 
   return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
-      {/* ── Top Navigation Bar (Midnight.network aesthetic) ───────────────── */}
+      {/* ── Clean Top Navigation Bar ───────────────────────────────────────── */}
       <header
         style={{
           borderBottom: '1px solid var(--border-subtle)',
           background: 'rgba(6, 7, 11, 0.95)',
           backdropFilter: 'blur(20px)',
-          WebkitBackdropFilter: 'blur(20px)',
           position: 'sticky',
           top: 0,
           zIndex: 100,
@@ -47,7 +46,7 @@ function App() {
             gap: '1rem',
           }}
         >
-          {/* Brand Logo & Name */}
+          {/* Logo & Brand */}
           <div
             style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', cursor: 'pointer' }}
             onClick={() => setActiveSection('about')}
@@ -57,45 +56,45 @@ function App() {
                 width: 36,
                 height: 36,
                 borderRadius: 10,
-                background: 'var(--gradient-midnight)',
+                background: 'var(--gradient-main)',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
                 fontSize: '1.2rem',
-                boxShadow: '0 0 20px rgba(139, 92, 246, 0.4)',
+                boxShadow: '0 0 16px rgba(139, 92, 246, 0.4)',
               }}
             >
               🛡️
             </div>
             <div>
               <div style={{ fontWeight: 800, fontSize: '1.1rem', letterSpacing: '-0.02em', fontFamily: 'Outfit, sans-serif' }}>
-                DataVault <span className="gradient-text">DEX</span>
+                DataVault <span className="text-gradient">AI</span>
               </div>
               <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', marginTop: '-2px' }}>
-                Zero-Knowledge AI Data on Midnight
+                Private AI Dataset Sharing on Midnight
               </div>
             </div>
           </div>
 
-          {/* Navigation Links: About (Home), Marketplace, Register, Verifier, Network */}
+          {/* Navigation Links (Plain English) */}
           <nav style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
             {[
-              { id: 'about', label: 'About & Vision' },
-              { id: 'marketplace', label: 'Marketplace' },
-              { id: 'register', label: 'Register Dataset' },
-              { id: 'verifier', label: 'ZK Verifier' },
-              { id: 'network', label: 'Network' },
+              { id: 'about', label: 'About & How It Works' },
+              { id: 'marketplace', label: 'Explore Datasets' },
+              { id: 'register', label: 'Register a Dataset' },
+              { id: 'verifier', label: 'Verify Authenticity' },
+              { id: 'network', label: 'Network Status' },
             ].map((link) => (
               <button
                 key={link.id}
                 onClick={() => setActiveSection(link.id as NavSection)}
-                className={`btn btn-ghost btn-sm`}
+                className="btn btn-ghost btn-sm"
                 style={{
                   padding: '0.45rem 0.85rem',
                   fontSize: '0.85rem',
                   borderRadius: 'var(--radius-sm)',
                   background: activeSection === link.id ? 'rgba(139, 92, 246, 0.15)' : 'transparent',
-                  color: activeSection === link.id ? '#ffffff' : 'var(--text-secondary)',
+                  color: activeSection === link.id ? '#ffffff' : 'var(--text-muted)',
                   border: activeSection === link.id ? '1px solid rgba(139, 92, 246, 0.35)' : '1px solid transparent',
                   fontWeight: activeSection === link.id ? 700 : 500,
                 }}
@@ -108,15 +107,15 @@ function App() {
           {/* Right: Network Indicator & Universal Wallet Button */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
             <span className="badge badge-purple" style={{ fontSize: '0.7rem' }}>
-              <span className="pulse-dot" /> Preview
+              <span className="pulse-dot" /> Midnight Preview
             </span>
             <WalletConnect hook={midnightHook} />
           </div>
         </div>
       </header>
 
-      {/* ── Main Dynamic Application View ─────────────────────────────────── */}
-      <main className="container" style={{ padding: '2rem 1.5rem 4rem', flex: 1 }}>
+      {/* ── Main Application Section ───────────────────────────────────────── */}
+      <main className="container" style={{ padding: '2.5rem 1.5rem 4rem', flex: 1 }}>
         <DatasetExchange
           walletApi={walletApi}
           activeSection={activeSection}
@@ -124,19 +123,18 @@ function App() {
           registryState={indexer.state}
           indexerLoading={indexer.loading}
           indexerError={indexer.error}
-          contractConfigured={indexer.contractConfigured}
           contractAddress={indexer.contractAddress}
           onRefresh={() => {
             indexer.refresh();
-            showToast('✓ Synchronized with Midnight Preview GraphQL Indexer');
+            showToast('✓ Synchronized with Midnight blockchain');
           }}
           onAddListing={(listing) => {
             indexer.addOptimisticListing(listing);
-            showToast(`✓ Dataset "${listing.datasetName}" registered on Midnight Preview!`);
+            showToast(`✓ Dataset "${listing.datasetName}" registered successfully!`);
           }}
           onIncrementVerified={() => {
             indexer.incrementVerifiedCount();
-            showToast('✓ Cryptographic integrity proof verified on Midnight Preview!');
+            showToast('✓ Authenticity proof verified and recorded on blockchain!');
           }}
         />
       </main>
@@ -166,29 +164,29 @@ function App() {
         </div>
       )}
 
-      {/* ── Clean Midnight Footer ──────────────────────────────────────────── */}
+      {/* ── Footer ─────────────────────────────────────────────────────────── */}
       <footer
         style={{
           borderTop: '1px solid var(--border-subtle)',
           padding: '2rem 1.5rem',
           background: '#040508',
           fontSize: '0.82rem',
-          color: 'var(--text-muted)',
+          color: 'var(--text-subtle)',
         }}
       >
         <div className="container" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
           <div>
-            DataVault Exchange · Built with <strong>Compact Smart Contracts</strong> on Midnight Network
+            DataVault · Privacy-Preserving AI Dataset Sharing on <strong>Midnight Network</strong>
           </div>
           <div style={{ display: 'flex', gap: '1.25rem' }}>
-            <a href="https://midnight.network" target="_blank" rel="noreferrer" style={{ color: 'var(--midnight-violet-light)', textDecoration: 'none' }}>
-              Midnight Network ↗
+            <a href="https://midnight.network" target="_blank" rel="noreferrer" style={{ color: 'var(--primary-light)', textDecoration: 'none' }}>
+              Midnight Website ↗
             </a>
-            <a href="https://docs.midnight.network" target="_blank" rel="noreferrer" style={{ color: 'var(--midnight-cyan-light)', textDecoration: 'none' }}>
-              Compact Docs ↗
+            <a href="https://docs.midnight.network" target="_blank" rel="noreferrer" style={{ color: 'var(--cyan-light)', textDecoration: 'none' }}>
+              Documentation ↗
             </a>
-            <a href="https://midnight-tmnight-preview.nethermind.dev" target="_blank" rel="noreferrer" style={{ color: 'var(--midnight-emerald-light)', textDecoration: 'none' }}>
-              Preview Faucet ↗
+            <a href="https://midnight-tmnight-preview.nethermind.dev" target="_blank" rel="noreferrer" style={{ color: 'var(--emerald-light)', textDecoration: 'none' }}>
+              Get Test Tokens (Faucet) ↗
             </a>
           </div>
         </div>
