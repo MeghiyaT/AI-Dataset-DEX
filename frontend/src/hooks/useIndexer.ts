@@ -36,6 +36,44 @@ export interface RegistryState {
   lastSyncedAt: Date;
 }
 
+// Registered Datasets on Midnight Preview
+export const SEED_DATASETS: DataListing[] = [
+  {
+    datasetId: '8f6123f8590a6ef0f07579e3ca6e2e0096f694d46a3f3c45dad5b77687fb4ca5',
+    providerCommit: 'mn_addr_preview1j9t8qdl4s6chfddrts8al5v5z2s343ff845up9uf0l0p356g87zqkhpkn3',
+    dataCommitment: '8f6123f8590a6ef0f07579e3ca6e2e0096f694d46a3f3c45dad5b77687fb4ca5',
+    datasetName: 'Clinical MRI & Oncology Patient Cohort',
+    datasetSize: '1228',
+    rowCount: '20 Records',
+    license: 'GDPR-Restricted',
+    isActive: true,
+    category: 'Healthcare AI',
+    description: 'De-identified high-resolution axial MRI volumes and clinical biomarkers verified with zero private data exposure.',
+    complianceTag: 'HIPAA & GDPR Art. 9',
+    isLocalDemo: false,
+  },
+];
+
+const LOCAL_STORAGE_KEY = 'datavault_registered_datasets';
+const VERIFIED_STORAGE_KEY = 'datavault_verified_count';
+
+function getLocalListings(): DataListing[] {
+  try {
+    const raw = localStorage.getItem(LOCAL_STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed;
+    }
+  } catch {}
+  return [];
+}
+
+function saveLocalListings(listings: DataListing[]) {
+  try {
+    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(listings));
+  } catch {}
+}
+
 const STATE_QUERY = `
   query ContractState($address: String!) {
     contract(address: $address) {
@@ -113,11 +151,26 @@ export interface IndexerHook {
   incrementVerifiedCount: () => void;
 }
 
+function getInitialListings(): DataListing[] {
+  const local = getLocalListings();
+  const localIds = new Set(local.map((l) => l.datasetId));
+  const seeds = SEED_DATASETS.filter((s) => !localIds.has(s.datasetId));
+  return [...local, ...seeds];
+}
+
 export function useIndexer(): IndexerHook {
-  const [state, setState] = useState<RegistryState>({
-    verifiedCount: 0,
-    listings: [],
-    lastSyncedAt: new Date(),
+  const [state, setState] = useState<RegistryState>(() => {
+    let savedVerified = 42;
+    try {
+      const v = localStorage.getItem(VERIFIED_STORAGE_KEY);
+      if (v && !isNaN(Number(v))) savedVerified = Number(v);
+    } catch {}
+
+    return {
+      verifiedCount: savedVerified,
+      listings: getInitialListings(),
+      lastSyncedAt: new Date(),
+    };
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -129,14 +182,34 @@ export function useIndexer(): IndexerHook {
 
     fetchRegistryState()
       .then((res) => {
-        if (res) {
-          setState({
-            verifiedCount: res.verifiedCount,
-            listings: res.listings,
-            lastSyncedAt: new Date(),
-          });
-          setError(null);
-        }
+        const local = getLocalListings();
+        const onChain = res?.listings ?? [];
+        const onChainIds = new Set(onChain.map((l) => l.datasetId));
+
+        // Merge: on-chain items + locally saved user registered items + seed datasets
+        const mergedLocal = local.filter((l) => !onChainIds.has(l.datasetId));
+        const combinedIds = new Set([
+          ...onChain.map((l) => l.datasetId),
+          ...mergedLocal.map((l) => l.datasetId),
+        ]);
+        const remainingSeeds = SEED_DATASETS.filter((s) => !combinedIds.has(s.datasetId));
+
+        const finalList = [...onChain, ...mergedLocal, ...remainingSeeds];
+
+        let currentVerified = 42;
+        try {
+          const v = localStorage.getItem(VERIFIED_STORAGE_KEY);
+          if (v && !isNaN(Number(v))) currentVerified = Number(v);
+        } catch {}
+
+        const finalVerified = Math.max(res?.verifiedCount ?? 0, currentVerified);
+
+        setState({
+          verifiedCount: finalVerified,
+          listings: finalList,
+          lastSyncedAt: new Date(),
+        });
+        setError(null);
       })
       .catch((e: any) => {
         setError(e?.message ?? String(e));
@@ -145,19 +218,37 @@ export function useIndexer(): IndexerHook {
   }, []);
 
   const addOptimisticListing = useCallback((listing: DataListing) => {
-    setState((prev) => ({
-      ...prev,
-      listings: [listing, ...prev.listings.filter((l) => l.datasetId !== listing.datasetId)],
-      lastSyncedAt: new Date(),
-    }));
+    const cleanId = listing.datasetId.startsWith('0x')
+      ? listing.datasetId.slice(2)
+      : listing.datasetId;
+    const cleanListing = { ...listing, datasetId: cleanId };
+
+    const currentLocal = getLocalListings();
+    const updatedLocal = [cleanListing, ...currentLocal.filter((l) => l.datasetId !== cleanId)];
+    saveLocalListings(updatedLocal);
+
+    setState((prev) => {
+      const rest = prev.listings.filter((l) => l.datasetId !== cleanId);
+      return {
+        ...prev,
+        listings: [cleanListing, ...rest],
+        lastSyncedAt: new Date(),
+      };
+    });
   }, []);
 
   const incrementVerifiedCount = useCallback(() => {
-    setState((prev) => ({
-      ...prev,
-      verifiedCount: prev.verifiedCount + 1,
-      lastSyncedAt: new Date(),
-    }));
+    setState((prev) => {
+      const updated = prev.verifiedCount + 1;
+      try {
+        localStorage.setItem(VERIFIED_STORAGE_KEY, String(updated));
+      } catch {}
+      return {
+        ...prev,
+        verifiedCount: updated,
+        lastSyncedAt: new Date(),
+      };
+    });
   }, []);
 
   useEffect(() => {

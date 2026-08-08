@@ -338,7 +338,14 @@ function AboutView({
 // 2. MARKETPLACE VIEW
 // ═════════════════════════════════════════════════════════════════════════════
 
-const CATEGORIES = ['All', 'Healthcare AI', 'LLM Reasoning', 'Financial AI', 'Computer Vision'];
+const CURATED_CATEGORIES = [
+  'All',
+  'Healthcare AI',
+  'LLM Reasoning',
+  'Financial AI',
+  'Computer Vision',
+  'Other Domains',
+];
 
 function MarketplaceView({
   listings,
@@ -361,15 +368,26 @@ function MarketplaceView({
   const [search, setSearch] = useState('');
 
   const filtered = useMemo(() => {
+    const standardSet = new Set(['Healthcare AI', 'LLM Reasoning', 'Financial AI', 'Computer Vision']);
+
     return listings.filter((l) => {
-      const matchCat =
-        selectedCat === 'All' ||
-        (l.category && l.category.toLowerCase().includes(selectedCat.toLowerCase()));
+      let matchCat = true;
+      if (selectedCat === 'All') {
+        matchCat = true;
+      } else if (selectedCat === 'Other Domains') {
+        // Matches any custom, niche, or non-standard category
+        matchCat = !l.category || !standardSet.has(l.category);
+      } else {
+        matchCat = Boolean(l.category && l.category.toLowerCase().includes(selectedCat.toLowerCase()));
+      }
+
       const matchSearch =
         !search ||
         l.datasetName.toLowerCase().includes(search.toLowerCase()) ||
         l.datasetId.toLowerCase().includes(search.toLowerCase()) ||
+        (l.category && l.category.toLowerCase().includes(search.toLowerCase())) ||
         l.license.toLowerCase().includes(search.toLowerCase());
+
       return matchCat && matchSearch;
     });
   }, [listings, selectedCat, search]);
@@ -395,7 +413,7 @@ function MarketplaceView({
         }}
       >
         <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
-          {CATEGORIES.map((cat) => (
+          {CURATED_CATEGORIES.map((cat) => (
             <button
               key={cat}
               onClick={() => setSelectedCat(cat)}
@@ -558,8 +576,9 @@ function RegisterView({
 
   const [datasetName, setDatasetName] = useState('');
   const [category, setCategory] = useState('Healthcare AI');
+  const [customCategory, setCustomCategory] = useState('');
   const [license, setLicense] = useState('GDPR-Restricted');
-  const [rowCount, setRowCount] = useState('100,000 Records');
+  const [rowCount, setRowCount] = useState('100000');
   const [description, setDescription] = useState('');
   const [file, setFile] = useState<File | null>(null);
   const [status, setStatus] = useState<'idle' | 'fingerprinting' | 'recording' | 'done' | 'error'>('idle');
@@ -582,6 +601,26 @@ function RegisterView({
     setErrorMsg(null);
   };
 
+  const handleRowCountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    // Strictly filter out all characters, alphabets, symbols, negatives, decimals, spaces, emojis
+    const digitsOnly = e.target.value.replace(/\D/g, '');
+    // Remove leading zeros so it is strictly a positive integer
+    const positiveIntOnly = digitsOnly.replace(/^0+/, '');
+    setRowCount(positiveIntOnly);
+  };
+
+  const handleTitleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.value.length <= 100) {
+      setDatasetName(e.target.value);
+    }
+  };
+
+  const handleDescriptionChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    if (e.target.value.length <= 500) {
+      setDescription(e.target.value);
+    }
+  };
+
   const handleRegister = async () => {
     if (!isConnected) {
       setErrorMsg('Please connect an authenticated Midnight wallet (Lace or 1AM) before registering a dataset.');
@@ -593,8 +632,37 @@ function RegisterView({
       return;
     }
 
-    if (!datasetName || !file) {
-      setErrorMsg('Please choose a file and enter a dataset name.');
+    if (!file) {
+      setErrorMsg('Please choose a dataset file to create a digital fingerprint.');
+      return;
+    }
+
+    const trimmedTitle = datasetName.trim();
+    if (!trimmedTitle) {
+      setErrorMsg('Please enter a dataset title (3–100 characters).');
+      return;
+    }
+
+    if (trimmedTitle.length < 3 || trimmedTitle.length > 100) {
+      setErrorMsg('Dataset title must be between 3 and 100 characters.');
+      return;
+    }
+
+    const effectiveCategory = category === 'Custom' ? customCategory.trim() : category;
+    if (category === 'Custom' && (!effectiveCategory || effectiveCategory.length < 2)) {
+      setErrorMsg('Please enter a valid custom category name (e.g. Robotics, Genomics, Cybersecurity).');
+      return;
+    }
+
+    const parsedRecords = parseInt(rowCount, 10);
+    if (!rowCount || isNaN(parsedRecords) || parsedRecords <= 0) {
+      setErrorMsg('Please enter a valid positive integer for number of records (e.g. 500000). Letters and symbols are prohibited.');
+      return;
+    }
+
+    const trimmedDesc = description.trim();
+    if (trimmedDesc.length > 500) {
+      setErrorMsg('Description cannot exceed 500 characters.');
       return;
     }
 
@@ -609,18 +677,20 @@ function RegisterView({
         .join('');
 
       const enc = new TextEncoder();
-      const idBuf = await crypto.subtle.digest('SHA-256', enc.encode(datasetName));
+      const idBuf = await crypto.subtle.digest('SHA-256', enc.encode(trimmedTitle));
       const datasetIdHex = Array.from(new Uint8Array(idBuf))
         .map((b) => b.toString(16).padStart(2, '0'))
         .join('');
 
       setStatus('recording');
 
+      const formattedRowCount = `${parsedRecords.toLocaleString()} Records`;
+
       let hash = '0x' + hashHex.slice(0, 32);
       if (walletApi && typeof walletApi.callContract === 'function') {
         const res = await walletApi.callContract({
           circuit: 'registerDataset',
-          args: { datasetId: datasetIdHex, datasetName, datasetSize: String(file.size), rowCount, license },
+          args: { datasetId: datasetIdHex, datasetName: trimmedTitle, datasetSize: String(file.size), rowCount: formattedRowCount, license },
         });
         hash = res.txHash || hash;
       }
@@ -632,13 +702,13 @@ function RegisterView({
         datasetId: datasetIdHex,
         providerCommit: walletState.address || '7c89f1d2a45b67e890123456789abcdef0123456789abcdef0123456789abcde',
         dataCommitment: hashHex,
-        datasetName,
+        datasetName: trimmedTitle,
         datasetSize: String(file.size),
-        rowCount,
+        rowCount: formattedRowCount,
         license,
         isActive: true,
-        category,
-        description: description || `Protected ${category} training dataset registered on Midnight blockchain.`,
+        category: effectiveCategory,
+        description: trimmedDesc || `Protected ${effectiveCategory} training dataset registered on Midnight blockchain.`,
       });
     } catch (e: any) {
       setErrorMsg(e?.message || 'Registration failed');
@@ -797,14 +867,20 @@ function RegisterView({
         {/* Form Inputs */}
         <div className="grid-2" style={{ marginBottom: '1.25rem', opacity: isAuthorized ? 1 : 0.6 }}>
           <div>
-            <label className="form-label">Dataset Title</label>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.35rem' }}>
+              <label className="form-label" style={{ marginBottom: 0 }}>Dataset Title</label>
+              <span style={{ fontSize: '0.72rem', color: datasetName.length >= 95 ? '#fda4af' : 'var(--text-subtle)' }}>
+                {datasetName.length}/100
+              </span>
+            </div>
             <input
               type="text"
               className="input"
+              maxLength={100}
               disabled={!isAuthorized}
               placeholder="e.g. Clinical MRI Brain Scan Benchmark"
               value={datasetName}
-              onChange={(e) => setDatasetName(e.target.value)}
+              onChange={handleTitleChange}
             />
           </div>
           <div>
@@ -819,21 +895,58 @@ function RegisterView({
               <option value="LLM Reasoning">LLM Reasoning & Text Traces</option>
               <option value="Computer Vision">Computer Vision & Autonomous Cars</option>
               <option value="Financial AI">Financial AI & Market Patterns</option>
+              <option value="Speech & Audio">Speech & Audio Processing</option>
+              <option value="Robotics & Autonomous">Robotics & Sensor Fusion</option>
+              <option value="Biology & Genomics">Biology, Genomics & Protein Design</option>
+              <option value="Custom">✨ Custom / Other AI Domain…</option>
             </select>
+
+            {category === 'Custom' && (
+              <div style={{ marginTop: '0.6rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.25rem' }}>
+                  <span style={{ fontSize: '0.72rem', color: 'var(--cyan-light)', fontWeight: 600 }}>Specify Custom Domain</span>
+                  <span style={{ fontSize: '0.7rem', color: customCategory.length >= 45 ? '#fda4af' : 'var(--text-subtle)' }}>
+                    {customCategory.length}/50
+                  </span>
+                </div>
+                <input
+                  type="text"
+                  className="input"
+                  maxLength={50}
+                  disabled={!isAuthorized}
+                  placeholder="e.g. Quantum Computing, Cybersecurity AI"
+                  value={customCategory}
+                  onChange={(e) => setCustomCategory(e.target.value.slice(0, 50))}
+                  style={{ fontSize: '0.84rem', padding: '0.45rem 0.75rem' }}
+                />
+              </div>
+            )}
           </div>
         </div>
 
         <div className="grid-2" style={{ marginBottom: '1.25rem', opacity: isAuthorized ? 1 : 0.6 }}>
           <div>
-            <label className="form-label">Number of Records (Rows / Images)</label>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.35rem' }}>
+              <label className="form-label" style={{ marginBottom: 0 }}>Number of Records</label>
+              {rowCount && !isNaN(parseInt(rowCount, 10)) && (
+                <span style={{ fontSize: '0.72rem', color: 'var(--cyan-light)', fontWeight: 600 }}>
+                  {parseInt(rowCount, 10).toLocaleString()} records
+                </span>
+              )}
+            </div>
             <input
               type="text"
+              inputMode="numeric"
+              pattern="[0-9]*"
               className="input"
               disabled={!isAuthorized}
-              placeholder="e.g. 500,000 Records"
+              placeholder="e.g. 500000"
               value={rowCount}
-              onChange={(e) => setRowCount(e.target.value)}
+              onChange={handleRowCountChange}
             />
+            <div style={{ fontSize: '0.72rem', color: 'var(--text-subtle)', marginTop: '0.3rem' }}>
+              Positive whole numbers only (no letters, decimals, or symbols).
+            </div>
           </div>
           <div>
             <label className="form-label">License</label>
@@ -852,14 +965,20 @@ function RegisterView({
         </div>
 
         <div style={{ marginBottom: '1.5rem', opacity: isAuthorized ? 1 : 0.6 }}>
-          <label className="form-label">Brief Description</label>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.35rem' }}>
+            <label className="form-label" style={{ marginBottom: 0 }}>Brief Description</label>
+            <span style={{ fontSize: '0.72rem', color: description.length >= 480 ? '#fda4af' : 'var(--text-subtle)' }}>
+              {description.length}/500
+            </span>
+          </div>
           <textarea
             className="textarea"
             rows={2}
+            maxLength={500}
             disabled={!isAuthorized}
             placeholder="Tell buyers what kind of data is included…"
             value={description}
-            onChange={(e) => setDescription(e.target.value)}
+            onChange={handleDescriptionChange}
           />
         </div>
 
@@ -932,7 +1051,13 @@ function VerifierView({
   const [selectedId, setSelectedId] = useState<string>(preselectedListing?.datasetId || listings[0]?.datasetId || '');
   const [testFile, setTestFile] = useState<File | null>(null);
   const [isVerifying, setIsVerifying] = useState(false);
-  const [result, setResult] = useState<{ matched: boolean; txHash?: string; computedHash?: string } | null>(null);
+  const [result, setResult] = useState<{
+    matched: boolean;
+    mode: 'file-check' | 'on-chain-record';
+    txHash?: string;
+    computedHash?: string;
+    expectedHash?: string;
+  } | null>(null);
 
   const activeListing = listings.find((l) => l.datasetId === selectedId) || listings[0];
   const isDemo = walletState.status === 'connected' && walletState.walletType === 'demo';
@@ -945,11 +1070,22 @@ function VerifierView({
     }
   };
 
+  const handleClearFile = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+    setTestFile(null);
+    setResult(null);
+    const input = document.getElementById('verify-input') as HTMLInputElement;
+    if (input) input.value = '';
+  };
+
   const handleExecuteProof = async () => {
     setIsVerifying(true);
 
     try {
       let hashHex = '';
+      const mode = testFile ? 'file-check' : 'on-chain-record';
+
       if (testFile) {
         const buffer = await testFile.arrayBuffer();
         const hashBuf = await crypto.subtle.digest('SHA-256', buffer);
@@ -958,7 +1094,12 @@ function VerifierView({
           .join('');
 
         if (activeListing && hashHex.toLowerCase() !== activeListing.dataCommitment.toLowerCase()) {
-          setResult({ matched: false, computedHash: hashHex });
+          setResult({
+            matched: false,
+            mode: 'file-check',
+            computedHash: hashHex,
+            expectedHash: activeListing.dataCommitment,
+          });
           setIsVerifying(false);
           return;
         }
@@ -976,9 +1117,15 @@ function VerifierView({
       }
 
       onIncrementVerified();
-      setResult({ matched: true, txHash: tx, computedHash: hashHex });
+      setResult({
+        matched: true,
+        mode,
+        txHash: tx,
+        computedHash: hashHex || undefined,
+        expectedHash: activeListing?.dataCommitment,
+      });
     } catch {
-      setResult({ matched: false });
+      setResult({ matched: false, mode: testFile ? 'file-check' : 'on-chain-record' });
     } finally {
       setIsVerifying(false);
     }
@@ -989,14 +1136,21 @@ function VerifierView({
       <div className="card">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.4rem', flexWrap: 'wrap', gap: '0.5rem' }}>
           <h2 style={{ fontSize: '1.4rem', margin: 0 }}>Verify Dataset Authenticity</h2>
-          {isDemo && (
-            <span className="badge badge-green" style={{ fontSize: '0.74rem' }}>
-              ✓ Demo Sandbox Active (Verification Enabled)
+          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+            <span className={`badge ${testFile ? 'badge-cyan' : 'badge-purple'}`} style={{ fontSize: '0.74rem' }}>
+              {testFile ? 'Mode: Local File Tamper Check' : 'Mode: Direct On-Chain Record Verification'}
             </span>
-          )}
+            {isDemo && (
+              <span className="badge badge-green" style={{ fontSize: '0.74rem' }}>
+                ✓ Demo Sandbox Active
+              </span>
+            )}
+          </div>
         </div>
         <p style={{ fontSize: '0.88rem', color: 'var(--text-muted)', marginBottom: '1.5rem' }}>
-          Check any dataset file against the blockchain to prove it has not been modified or corrupted.
+          {testFile
+            ? 'Testing your local file copy against the immutable Midnight blockchain commitment.'
+            : 'Verifying the registered dataset record and zero-knowledge integrity proof on the Midnight blockchain.'}
         </p>
 
         {/* Dataset Selector */}
@@ -1051,33 +1205,58 @@ function VerifierView({
 
         {/* Upload candidate file */}
         <div style={{ marginBottom: '1.5rem' }}>
-          <label className="form-label">Upload File Copy to Check</label>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.4rem' }}>
+            <label className="form-label" style={{ margin: 0 }}>
+              {testFile ? 'Selected File for Tamper Verification' : 'Optional: Upload Local File Copy to Verify'}
+            </label>
+            {testFile && (
+              <button
+                type="button"
+                onClick={handleClearFile}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: 'var(--rose-light, #fda4af)',
+                  cursor: 'pointer',
+                  fontSize: '0.78rem',
+                  textDecoration: 'underline',
+                  padding: 0,
+                }}
+              >
+                ✕ Clear File (Switch to Direct On-Chain Record Mode)
+              </button>
+            )}
+          </div>
+
           <div
             style={{
-              border: '2px dashed var(--border-subtle)',
+              border: testFile ? '2px solid rgba(6, 182, 212, 0.4)' : '2px dashed var(--border-subtle)',
               borderRadius: 'var(--radius-md)',
               padding: '1.8rem',
               textAlign: 'center',
-              background: 'rgba(255, 255, 255, 0.02)',
+              background: testFile ? 'rgba(6, 182, 212, 0.04)' : 'rgba(255, 255, 255, 0.02)',
               cursor: 'pointer',
             }}
           >
             <input type="file" style={{ display: 'none' }} id="verify-input" onChange={handleFileChange} />
-            <label htmlFor="verify-input" style={{ cursor: 'pointer' }}>
+            <label htmlFor="verify-input" style={{ cursor: 'pointer', display: 'block' }}>
               {testFile ? (
                 <div>
-                  <div style={{ fontSize: '1.5rem', marginBottom: '0.2rem' }}>📄</div>
-                  <div style={{ fontWeight: 600, color: '#fff' }}>{testFile.name}</div>
-                  <div style={{ fontSize: '0.78rem', color: 'var(--cyan-light)' }}>
-                    Ready to verify authenticity ({formatBytes(testFile.size)})
+                  <div style={{ fontSize: '1.6rem', marginBottom: '0.2rem' }}>📄</div>
+                  <div style={{ fontWeight: 600, color: '#fff', fontSize: '0.95rem' }}>{testFile.name}</div>
+                  <div style={{ fontSize: '0.78rem', color: 'var(--cyan-light)', marginTop: '0.2rem' }}>
+                    Ready to compare local SHA-256 fingerprint against Midnight blockchain commitment ({formatBytes(testFile.size)})
+                  </div>
+                  <div style={{ fontSize: '0.72rem', color: 'var(--text-subtle)', marginTop: '0.4rem' }}>
+                    Click to choose a different file
                   </div>
                 </div>
               ) : (
                 <div>
-                  <div style={{ fontSize: '1.5rem', marginBottom: '0.2rem' }}>📥</div>
-                  <div style={{ fontWeight: 600, color: '#fff', fontSize: '0.92rem' }}>Click to Choose File</div>
-                  <div style={{ fontSize: '0.76rem', color: 'var(--text-subtle)' }}>
-                    (Or click below to run an instant verification check)
+                  <div style={{ fontSize: '1.6rem', marginBottom: '0.2rem' }}>📥</div>
+                  <div style={{ fontWeight: 600, color: '#fff', fontSize: '0.92rem' }}>Click to Choose Local File to Check</div>
+                  <div style={{ fontSize: '0.76rem', color: 'var(--text-subtle)', marginTop: '0.2rem' }}>
+                    (Optional — leave empty to directly test on-chain dataset registration & ZK circuit on Midnight)
                   </div>
                 </div>
               )}
@@ -1098,11 +1277,27 @@ function VerifierView({
               marginBottom: '1.5rem',
             }}
           >
-            <div style={{ fontWeight: 700, marginBottom: '0.2rem' }}>
-              {result.matched ? '✓ 100% Genuine: Dataset Authenticity Confirmed on Blockchain!' : '✗ Hash Mismatch: File has been modified or does not match'}
+            <div style={{ fontWeight: 700, marginBottom: '0.3rem', fontSize: '0.92rem' }}>
+              {result.matched
+                ? result.mode === 'file-check'
+                  ? '✓ 100% Genuine: Local File Matches On-Chain Blockchain Fingerprint!'
+                  : '✓ 100% Genuine: Dataset Registration & ZK Integrity Verified on Blockchain!'
+                : '✗ Hash Mismatch: Local file has been modified or does not match on-chain commitment'}
             </div>
-            {result.txHash && <div className="mono" style={{ fontSize: '0.75rem', marginTop: '0.2rem' }}>Proof Transaction: {result.txHash}</div>}
-            {result.computedHash && <div className="mono" style={{ fontSize: '0.72rem', opacity: 0.8, marginTop: '0.2rem' }}>Computed Hash: {result.computedHash}</div>}
+
+            <div style={{ fontSize: '0.78rem', opacity: 0.9, marginTop: '0.2rem' }}>
+              {result.matched
+                ? result.mode === 'file-check'
+                  ? 'Client-side SHA-256 computation perfectly matches the registered Midnight zero-knowledge commitment.'
+                  : 'On-chain zero-knowledge circuit (proveIntegrity) successfully verified dataset existence & commitment authenticity.'
+                : 'The cryptographic fingerprint of your local file does not match the immutable commitment stored on Midnight.'}
+            </div>
+
+            {result.txHash && <div className="mono" style={{ fontSize: '0.75rem', marginTop: '0.4rem' }}>Proof Transaction: {result.txHash}</div>}
+            {result.computedHash && <div className="mono" style={{ fontSize: '0.72rem', opacity: 0.85, marginTop: '0.2rem' }}>Computed File Hash: {result.computedHash}</div>}
+            {result.expectedHash && !result.matched && (
+              <div className="mono" style={{ fontSize: '0.72rem', opacity: 0.85, marginTop: '0.2rem' }}>Expected On-Chain Hash: {result.expectedHash}</div>
+            )}
           </div>
         )}
 
@@ -1112,7 +1307,11 @@ function VerifierView({
             onClick={handleExecuteProof}
             disabled={isVerifying || (!activeListing && !testFile)}
           >
-            {isVerifying ? '⚡ Checking Authenticity…' : '⚡ Confirm Authenticity on Blockchain'}
+            {isVerifying
+              ? '⚡ Verifying Authenticity…'
+              : testFile
+              ? '⚡ Verify Local File against Blockchain'
+              : '⚡ Verify On-Chain Dataset Record'}
           </button>
         </div>
       </div>
