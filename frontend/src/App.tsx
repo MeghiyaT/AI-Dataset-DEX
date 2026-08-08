@@ -5,12 +5,12 @@ import { useIndexer } from './hooks/useIndexer';
 import { WalletConnect } from './components/WalletConnect';
 import { DatasetExchange } from './components/DatasetExchange';
 
-export type NavSection = 'about' | 'marketplace' | 'register' | 'verifier' | 'network';
+export type NavSection = 'about' | 'marketplace' | 'register' | 'verifier';
 
 function App() {
   const midnightHook = useMidnight();
   const indexer = useIndexer();
-  const [activeSection, setActiveSection] = useState<NavSection>('about'); // Default is About section!
+  const [activeSection, setActiveSection] = useState<NavSection>('about');
   const [toast, setToast] = useState<string | null>(null);
 
   const showToast = (msg: string) => {
@@ -25,7 +25,7 @@ function App() {
 
   return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
-      {/* ── Clean Top Navigation Bar ───────────────────────────────────────── */}
+      {/* ── Top Navigation Bar ─────────────────────────────────────────────── */}
       <header
         style={{
           borderBottom: '1px solid var(--border-subtle)',
@@ -76,14 +76,13 @@ function App() {
             </div>
           </div>
 
-          {/* Navigation Links (Plain English) */}
+          {/* Clean 4 Navigation Links (No redundant network tab) */}
           <nav style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
             {[
               { id: 'about', label: 'About & How It Works' },
               { id: 'marketplace', label: 'Explore Datasets' },
               { id: 'register', label: 'Register a Dataset' },
               { id: 'verifier', label: 'Verify Authenticity' },
-              { id: 'network', label: 'Network Status' },
             ].map((link) => (
               <button
                 key={link.id}
@@ -104,10 +103,10 @@ function App() {
             ))}
           </nav>
 
-          {/* Right: Network Indicator & Universal Wallet Button */}
+          {/* Right: Preview Badge & Wallet Button */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
             <span className="badge badge-purple" style={{ fontSize: '0.7rem' }}>
-              <span className="pulse-dot" /> Midnight Preview
+              <span className="pulse-dot" /> Preview
             </span>
             <WalletConnect hook={midnightHook} />
           </div>

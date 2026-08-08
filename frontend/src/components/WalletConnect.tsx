@@ -1,7 +1,7 @@
 // WalletConnect.tsx
-// Simple, Clean, Non-intrusive Wallet Connection.
+// Simple, Clean Wallet Connection with Midnight Bech32 Address Validation.
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import type { MidnightHook } from '../hooks/useMidnight';
 
 interface Props {
@@ -13,11 +13,23 @@ function truncate(addr: string): string {
   return `${addr.slice(0, 10)}…${addr.slice(-6)}`;
 }
 
+// Validates official Midnight Bech32 address format
+function isValidMidnightAddress(addr: string): boolean {
+  const clean = addr.trim();
+  // Midnight addresses follow: mn_addr_<network>1<bech32 payload>
+  const regex = /^mn_addr_(preview|test|devnet|undeployed|mainnet)1[0-9a-z]{45,90}$/i;
+  return regex.test(clean);
+}
+
 export function WalletConnect({ hook }: Props) {
   const { walletState, connect, disconnect, targetNetwork, isExtensionAvailable, detectedExtensionName } = hook;
   const [showMenu, setShowMenu] = useState(false);
   const [customInput, setCustomInput] = useState('');
   const [copied, setCopied] = useState(false);
+
+  const isCustomValid = useMemo(() => {
+    return isValidMidnightAddress(customInput);
+  }, [customInput]);
 
   const copy = (text: string) => {
     navigator.clipboard.writeText(text);
@@ -45,7 +57,7 @@ export function WalletConnect({ hook }: Props) {
                 position: 'absolute',
                 top: 'calc(100% + 8px)',
                 right: 0,
-                width: 320,
+                width: 330,
                 background: '#0d101d',
                 border: '1px solid rgba(139, 92, 246, 0.4)',
                 borderRadius: 'var(--radius-md)',
@@ -55,10 +67,10 @@ export function WalletConnect({ hook }: Props) {
               }}
             >
               <div style={{ fontSize: '0.88rem', fontWeight: 700, color: '#fff', marginBottom: '0.25rem' }}>
-                Choose How to Connect
+                Connect to Midnight
               </div>
               <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: '0.9rem' }}>
-                Use your browser extension, paste your address, or try with a demo account.
+                Select your browser wallet or enter your Midnight Preview address.
               </p>
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem', marginBottom: '1rem' }}>
@@ -99,31 +111,49 @@ export function WalletConnect({ hook }: Props) {
                 </button>
               </div>
 
-              {/* 3. Custom Address Input */}
+              {/* 3. Validated Custom Address Input */}
               <div style={{ borderTop: '1px solid var(--border-subtle)', paddingTop: '0.8rem' }}>
                 <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', marginBottom: '0.4rem', fontWeight: 600 }}>
-                  OR PASTE YOUR OWN WALLET ADDRESS:
+                  PASTE VALID MIDNIGHT ADDRESS:
                 </div>
-                <div style={{ display: 'flex', gap: '0.4rem' }}>
+                <div style={{ display: 'flex', gap: '0.4rem', marginBottom: '0.35rem' }}>
                   <input
                     type="text"
                     className="input"
                     placeholder="mn_addr_preview1..."
                     value={customInput}
                     onChange={(e) => setCustomInput(e.target.value)}
-                    style={{ fontSize: '0.78rem', padding: '0.4rem 0.6rem' }}
+                    style={{
+                      fontSize: '0.76rem',
+                      padding: '0.4rem 0.6rem',
+                      borderColor: customInput.length > 0 ? (isCustomValid ? 'var(--emerald)' : 'var(--rose)') : 'var(--border-subtle)',
+                    }}
                   />
                   <button
                     className="btn btn-primary btn-sm"
-                    disabled={!customInput.trim()}
+                    disabled={!isCustomValid}
                     onClick={() => {
-                      setShowMenu(false);
-                      connect('custom', customInput);
+                      if (isCustomValid) {
+                        setShowMenu(false);
+                        connect('custom', customInput.trim());
+                      }
                     }}
                   >
-                    Set
+                    Connect
                   </button>
                 </div>
+
+                {/* Inline Validation Feedback */}
+                {customInput.length > 0 && !isCustomValid && (
+                  <div style={{ fontSize: '0.7rem', color: 'var(--rose)' }}>
+                    ⚠️ Must be a valid Midnight address (e.g. mn_addr_preview1...)
+                  </div>
+                )}
+                {isCustomValid && (
+                  <div style={{ fontSize: '0.7rem', color: 'var(--emerald-light)' }}>
+                    ✓ Valid Midnight address format
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -207,7 +237,7 @@ export function WalletConnect({ hook }: Props) {
                     onClick={() => copy(walletState.address)}
                     style={{ background: 'none', border: 'none', color: 'var(--primary-light)', cursor: 'pointer', fontSize: '0.72rem' }}
                   >
-                    {copied ? '✓ Copied' : 'Copy'}
+                    {copied ? '✓' : 'Copy'}
                   </button>
                 </div>
               </div>

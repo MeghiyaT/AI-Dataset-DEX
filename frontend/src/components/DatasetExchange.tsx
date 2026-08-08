@@ -30,7 +30,6 @@ export function DatasetExchange({
   registryState,
   indexerLoading,
   indexerError,
-  contractAddress,
   onRefresh,
   onAddListing,
   onIncrementVerified,
@@ -86,16 +85,7 @@ export function DatasetExchange({
         />
       )}
 
-      {/* ── 5. Network Status Section ──────────────────────────────────────── */}
-      {activeSection === 'network' && (
-        <NetworkView
-          contractAddress={contractAddress}
-          verifiedCount={registryState.verifiedCount}
-          listingCount={registryState.listings.length}
-        />
-      )}
-
-      {/* ── Plain English Inspection Modal ─────────────────────────────────── */}
+      {/* ── Inspection Modal ──────────────────────────────────────────────── */}
       {inspectModalListing && (
         <InspectModal
           listing={inspectModalListing}
@@ -112,7 +102,7 @@ export function DatasetExchange({
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
-// 1. ABOUT & HOW IT WORKS (SIMPLE, HUMAN-FRIENDLY EXPLANATION)
+// 1. ABOUT & HOW IT WORKS (HOME PAGE)
 // ═════════════════════════════════════════════════════════════════════════════
 
 function AboutView({
@@ -198,7 +188,7 @@ function AboutView({
         </div>
       </div>
 
-      {/* ── The Problem & The Solution ───────────────────────────────────────── */}
+      {/* ── Problem & Solution ──────────────────────────────────────────────── */}
       <div className="grid-2" style={{ marginBottom: '2.5rem' }}>
         <div className="card">
           <div style={{ fontSize: '1.8rem', marginBottom: '0.5rem' }}>⚠️ The Real-World Problem</div>
@@ -270,7 +260,7 @@ function AboutView({
         </div>
       </div>
 
-      {/* ── Privacy Breakdown Table (Plain English) ──────────────────────────── */}
+      {/* ── Privacy Breakdown Table ─────────────────────────────────────────── */}
       <div className="card">
         <h3 style={{ fontSize: '1.3rem', marginBottom: '0.4rem' }}>What is Public vs What is Private?</h3>
         <p style={{ fontSize: '0.88rem', color: 'var(--text-muted)', marginBottom: '1.25rem' }}>
@@ -336,7 +326,7 @@ function AboutView({
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
-// 2. MARKETPLACE VIEW (CLEAN DATASET CARDS)
+// 2. MARKETPLACE VIEW
 // ═════════════════════════════════════════════════════════════════════════════
 
 const CATEGORIES = ['All', 'Healthcare AI', 'LLM Reasoning', 'Financial AI', 'Computer Vision'];
@@ -537,7 +527,7 @@ function MarketplaceView({
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
-// 3. REGISTER VIEW (FRIENDLY STEPPER)
+// 3. REGISTER VIEW
 // ═════════════════════════════════════════════════════════════════════════════
 
 function RegisterView({
@@ -576,7 +566,6 @@ function RegisterView({
     setStatus('fingerprinting');
 
     try {
-      // Create local digital fingerprint
       const buffer = await file.arrayBuffer();
       const hashBuf = await crypto.subtle.digest('SHA-256', buffer);
       const hashHex = Array.from(new Uint8Array(hashBuf))
@@ -759,7 +748,7 @@ function RegisterView({
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
-// 4. VERIFIER PLAYGROUND (EASY FILE CHECKER)
+// 4. VERIFIER PLAYGROUND
 // ═════════════════════════════════════════════════════════════════════════════
 
 function VerifierView({
@@ -899,90 +888,6 @@ function VerifierView({
           <button className="btn btn-primary btn-lg" onClick={handleExecuteProof} disabled={isVerifying || !activeListing}>
             {isVerifying ? '⚡ Checking Authenticity…' : '⚡ Confirm Authenticity on Blockchain'}
           </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ═════════════════════════════════════════════════════════════════════════════
-// 5. NETWORK STATUS VIEW
-// ═════════════════════════════════════════════════════════════════════════════
-
-function NetworkView({
-  contractAddress,
-  verifiedCount,
-  listingCount,
-}: {
-  contractAddress: string;
-  verifiedCount: number;
-  listingCount: number;
-}) {
-  return (
-    <div style={{ maxWidth: 840, margin: '0 auto' }}>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1rem', marginBottom: '1.5rem' }}>
-        <div className="card">
-          <div style={{ fontSize: '0.72rem', color: 'var(--text-subtle)', textTransform: 'uppercase', marginBottom: '0.3rem' }}>
-            Midnight Blockchain
-          </div>
-          <div style={{ fontWeight: 700, color: '#fff', fontSize: '1rem' }}>Preview Network</div>
-          <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', marginTop: '0.2rem' }}>
-            rpc.preview.midnight.network
-          </div>
-        </div>
-
-        <div className="card">
-          <div style={{ fontSize: '0.72rem', color: 'var(--text-subtle)', textTransform: 'uppercase', marginBottom: '0.3rem' }}>
-            Data Indexer
-          </div>
-          <div style={{ fontWeight: 700, color: '#fff', fontSize: '1rem' }}>Connected</div>
-          <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', marginTop: '0.2rem' }}>
-            GraphQL API v4
-          </div>
-        </div>
-
-        <div className="card">
-          <div style={{ fontSize: '0.72rem', color: 'var(--text-subtle)', textTransform: 'uppercase', marginBottom: '0.3rem' }}>
-            Privacy Prover Server
-          </div>
-          <div style={{ fontWeight: 700, color: '#fff', fontSize: '1rem' }}>Docker Container Ready</div>
-          <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', marginTop: '0.2rem' }}>
-            Port 6300 Active
-          </div>
-        </div>
-      </div>
-
-      <div className="card">
-        <h3 style={{ marginBottom: '0.75rem' }}>Smart Contract Address</h3>
-        <div style={{ marginBottom: '1rem' }}>
-          <div
-            className="mono"
-            style={{
-              background: 'rgba(0,0,0,0.4)',
-              padding: '0.65rem 0.85rem',
-              borderRadius: 'var(--radius-sm)',
-              fontSize: '0.82rem',
-              color: 'var(--cyan-light)',
-              wordBreak: 'break-all',
-            }}
-          >
-            {contractAddress}
-          </div>
-        </div>
-
-        <div className="grid-2">
-          <div>
-            <div style={{ fontSize: '0.72rem', color: 'var(--text-subtle)' }}>TOTAL PROOFS VERIFIED</div>
-            <div style={{ fontSize: '1.6rem', fontWeight: 800, color: 'var(--emerald-light)' }}>
-              {verifiedCount}
-            </div>
-          </div>
-          <div>
-            <div style={{ fontSize: '0.72rem', color: 'var(--text-subtle)' }}>REGISTERED DATASETS</div>
-            <div style={{ fontSize: '1.6rem', fontWeight: 800, color: 'var(--primary-light)' }}>
-              {listingCount}
-            </div>
-          </div>
         </div>
       </div>
     </div>
