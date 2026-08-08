@@ -1,0 +1,176 @@
+pragma language_version >= 0.23;
+
+import CompactStandardLibrary;
+
+// =============================================================================
+// DataVault Exchange — datasetRegistry contract
+// =============================================================================
+//
+// Privacy boundary
+// ----------------
+//
+// PUBLIC (on-chain — anyone indexing the chain can read these):
+//   • registry              Map from datasetId -> DataListing. Each listing
+//                           carries the provider identity COMMITMENT (a hash,
+//                           not the raw identity), the dataset CONTENT
+//                           COMMITMENT (hash = integrity anchor, not the raw
+//                           data), plus public metadata: name, byte size,
+//                           claimed row count, license string, availability.
+//   • ownerCommit           hash of the deployer's secret identity key.
+//   • verifiedCount         running tally of successful integrity proofs.
+//
+// PRIVATE (never written to the ledger; supplied off-chain at runtime and
+// discarded after each call):
+//   • `providerSecret`      witness: the provider's secret identity key.
+//                           Only its hash (ownerCommit / providerCommit) is
+//                           ever disclosed.
+//   • `datasetSlices`       witness: THE raw dataset content itself, provided
+//                           as a fixed Vector<16, Bytes<32>>. Consumed inside
+//                           the `register` and `proveIntegrity` circuits to
+//                           recompute the content commitment, and is NEVER
+//                           written back to the ledger, never logged, emitted,
+//                           or exposed in any output.
+//
+// Why this split is honest (not decorative):
+//   • Observers can see dataset X exists, its size, its license and its
+//     integrity anchor H = hash(slices) — but never the underlying rows. Raw
+//     training data stays under the provider's GDPR/CCPA control even while it
+//     is registered, shared, and verified.
+//   • `proveIntegrity` is a real proof-of-integrity: a party proves, in
+//     zero-knowledge, that they hold content (slices) which hashes to the
+//     committed value, WITHOUT revealing the content. This powers the
+//     "Proved without revealing your input" label in the frontend.
+//   • disclose() is used DELIBERATELY — only for metadata, the integrity
+//     anchor hash, and the verified counter. The raw dataset and provider
+//     secret are never arguments to disclose().
+// =============================================================================
+
+// ---------------------------------------------------------------------------
+// Public ledger state
+// ---------------------------------------------------------------------------
+
+struct DataListing {
+  // Public commitment to the dataset provider (hash of their secret key).
+  providerCommit: Bytes<32>;
+  // PUBLIC integrity anchor — the hash of the private dataset slices.
+  dataCommitment: Bytes<32>;
+  // Public metadata (not the data itself).
+  datasetName: Opaque<"string">;
+  datasetSize: Uint<64>;
+  rowCount: Opaque<"string">;
+  license: Opaque<"string">;
+  // Whether the listing should be visible in the exchange UI.
+  isActive: Boolean;
+};
+
+// The registry of datasets — keyed by a caller-chosen dataset ID.
+export ledger registry: Map<Bytes<32>, DataListing>;
+
+// Hash of the deployer's secret key; establishes the registry owner identity.
+export ledger ownerCommit: Bytes<32>;
+
+// Running tally of successful integrity proofs.
+export ledger verifiedCount: Counter;
+
+// ---------------------------------------------------------------------------
+// Private witnesses (implemented in TypeScript, run entirely off-chain)
+// ---------------------------------------------------------------------------
+
+witness providerSecret(): Bytes<32>;
+witness datasetSlices(datasetId: Bytes<32>): Vector<16, Bytes<32>>;
+
+// ---------------------------------------------------------------------------
+// Helper circuits
+// ---------------------------------------------------------------------------
+
+circuit providerCommitmentOf(sk: Bytes<32>): Bytes<32> {
+  return persistentHash<Vector<2, Bytes<32>>>([
+    pad(32, "datavault:provider:"),
+    sk,
+  ]);
+}
+
+circuit contentCommitmentOf(slices: Vector<16, Bytes<32>>): Bytes<32> {
+  return persistentHash<Vector<16, Bytes<32>>>(slices);
+}
+
+// ---------------------------------------------------------------------------
+// Constructor
+// ---------------------------------------------------------------------------
+
+constructor() {
+  const _secretKey = providerSecret();
+  // DELIBERATE disclose(): publish the *hash* of the identity, never the key.
+  ownerCommit = disclose(providerCommitmentOf(_secretKey));
+}
+
+// ---------------------------------------------------------------------------
+// Exported circuits
+// ---------------------------------------------------------------------------
+
+// Register a dataset. The raw content (slices) enters via the private witness,
+// is hashed to a public integrity anchor, and only that anchor + metadata are
+// ever disclosed.
+export circuit registerDataset(
+    datasetId: Bytes<32>,
+    datasetName: Opaque<"string">,
+    datasetSize: Uint<64>,
+    rowCount: Opaque<"string">,
+    license: Opaque<"string">): [] {
+  const _sk = providerSecret();
+  assert(ownerCommit == providerCommitmentOf(_sk), "register: not the owner");
+
+  const slices = datasetSlices(datasetId);
+  registry.insert(
+    disclose(datasetId),
+    DataListing {
+      providerCommit: disclose(providerCommitmentOf(_sk)),
+      dataCommitment: disclose(contentCommitmentOf(slices)),
+      datasetName: disclose(datasetName),
+      datasetSize: disclose(datasetSize),
+      rowCount: disclose(rowCount),
+      license: disclose(license),
+      isActive: disclose(true),
+    },
+  );
+}
+
+// Prove dataset integrity in zero-knowledge: the caller shows they hold
+// content (slices) whose commitment matches the on-chain value. The private
+// slices are read from the witness and never disclosed; only verifiedCount
+// changes on chain.
+export circuit proveIntegrity(datasetId: Bytes<32>): [] {
+  const slices = datasetSlices(datasetId);
+  const anchor = contentCommitmentOf(slices);
+  const listing = registry.lookup(disclose(datasetId));
+  assert(anchor == listing.dataCommitment,
+    "proveIntegrity: dataset content does not match the registered commitment");
+  verifiedCount.increment(1);
+}
+
+// Owner-only flip of a listing's public visibility. Only a Boolean disclosed.
+export circuit setActive(datasetId: Bytes<32>, active: Boolean): [] {
+  const _sk = providerSecret();
+  assert(ownerCommit == providerCommitmentOf(_sk), "setActive: not the owner");
+
+  const current = registry.lookup(disclose(datasetId));
+  registry.insert(
+    disclose(datasetId),
+    DataListing {
+      providerCommit: disclose(current.providerCommit),
+      dataCommitment: disclose(current.dataCommitment),
+      datasetName: disclose(current.datasetName),
+      datasetSize: disclose(current.datasetSize),
+      rowCount: disclose(current.rowCount),
+      license: disclose(current.license),
+      isActive: disclose(active),
+    },
+  );
+}
+
+// Pure public read — anyone may fetch a dataset's public metadata. Callers
+// supply an ID that already exists in the registry (the indexer lists IDs).
+export circuit readRowCount(datasetId: Bytes<32>): Opaque<"string"> {
+  assert(registry.member(disclose(datasetId)), "readRowCount: unknown dataset");
+  return registry.lookup(disclose(datasetId)).rowCount;
+}

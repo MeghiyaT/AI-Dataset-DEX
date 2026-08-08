@@ -1,0 +1,21 @@
+# Dependencies
+node_modules/
+
+# Generated compact artifacts (rebuilt with `npm run compile`)
+contracts/managed/
+
+# Wallet secrets — NEVER commit
+.midnight-state.json
+.midnight-wallet-state/
+*.env.local
+.env.local
+
+# Build outputs
+dist/
+frontend/dist/
+
+# Logs, editor, OS
+*.log
+.DS_Store
+.vscode/
+.idea/

@@ -1,0 +1,258 @@
+// Deploy the DataVault Exchange datasetRegistry contract to a Midnight network.
+//
+// Non-interactive: scaffold → npm run setup runs straight through.
+import { WebSocket } from 'ws';
+import { pathToFileURL } from 'node:url';
+import * as Rx from 'rxjs';
+
+// Midnight SDK imports
+import { deployContract } from '@midnight-ntwrk/midnight-js-contracts';
+import { resolveNetwork, getOrCreateWallet, formatWalletBackupNotice, recordDeployment } from './network';
+import { createWallet, persistWalletState, unshieldedToken, type WalletContext } from './wallet';
+import { loadCompiledContract, createProviders } from './contract-client';
+import { DatasetStore, sha256, datasetStoreToSliceProvider } from './dataset';
+
+// @ts-expect-error Required for wallet sync
+globalThis.WebSocket = WebSocket;
+
+const PRIVATE_STATE_ID = 'dataVaultState';
+
+const { network, config: networkConfig } = resolveNetwork();
+const WALLET = getOrCreateWallet(network);
+const SEED = WALLET.seed;
+{
+  const notice = formatWalletBackupNotice(WALLET, network);
+  if (notice) console.log(notice);
+}
+
+async function waitForProofServer(maxAttempts = 60, delayMs = 2000): Promise<boolean> {
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      await fetch(networkConfig.proofServer, {
+        method: 'GET',
+        signal: AbortSignal.timeout(3000),
+      });
+      return true;
+    } catch (err: any) {
+      const code = err?.cause?.code || err?.code || '';
+      if (code !== 'ECONNREFUSED' && code !== 'UND_ERR_CONNECT_TIMEOUT' && code !== 'UND_ERR_SOCKET') {
+        return true;
+      }
+    }
+    if (attempt < maxAttempts) {
+      process.stdout.write(`\r  Waiting for proof server... (${attempt}/${maxAttempts})   `);
+      await new Promise((r) => setTimeout(r, delayMs));
+    }
+  }
+  return false;
+}
+
+// The compiled datasetRegistry contract *requires* its two witnesses to be
+// installed even for the constructor call. We wire them from the shared
+// contract-client: providerSecret is a stable 32-byte value derived from the
+// wallet seed, and datasetSlices is backed by an in-memory store (unused
+// during deploy, needed later by the CLI).
+
+function deriveProviderSecret(): Uint8Array {
+  // Stable 32-byte identity secret derived from the wallet seed. Never logged.
+  const raw = Buffer.from(SEED, 'hex');
+  const secret =
+    raw.length >= 32
+      ? raw.subarray(0, 32)
+      : Buffer.concat([raw, Buffer.alloc(32 - raw.length)]);
+  // Hash it so the on-chain ownerCommit never reveals seed material directly.
+  return sha256(new Uint8Array(secret));
+}
+
+let compiledContract: any;
+let providers: any;
+
+async function initContract(ctx: WalletContext) {
+  const store = new DatasetStore();
+  const provider = datasetStoreToSliceProvider(store);
+  const compiled = await loadCompiledContract(provider, deriveProviderSecret());
+  compiledContract = compiled.compiledContract;
+  providers = createProviders(ctx, networkConfig);
+}
+
+export async function deploy() {
+  console.log('\n╔══════════════════════════════════════════════════════════════╗');
+  console.log(`║  Deploy DataVault Exchange to ${network}`);
+  console.log('╚══════════════════════════════════════════════════════════════╝\n');
+
+  const seed = SEED;
+
+  console.log('─── Wallet setup ───────────────────────────────────────────────\n');
+  console.log('  Creating wallet...');
+  const walletCtx = await createWallet({ network, networkConfig, seed });
+  const restoredCount = Object.values(walletCtx.restored).filter(Boolean).length;
+  if (restoredCount > 0) {
+    console.log(`  Restored ${restoredCount}/3 child wallets from .midnight-wallet-state — sync will resume from saved point.`);
+  }
+
+  console.log('  Syncing with network...');
+  console.log('  ℹ  This may take several minutes depending on network size.');
+
+  const state = await walletCtx.wallet.waitForSyncedState();
+  process.stdout.write('\r  ✓ Synced with network.                                      \n');
+
+  await persistWalletState(network, walletCtx);
+
+  const address = walletCtx.unshieldedKeystore.getBech32Address();
+  let balance = state.unshielded.balances[unshieldedToken().raw] ?? 0n;
+  console.log(`\n  Wallet Address: ${address}`);
+  console.log(`  Balance: ${balance.toLocaleString()} tNight\n`);
+
+  if (network !== 'undeployed' && networkConfig.faucet) {
+    if (balance === 0n) {
+      console.log('─── Fund Wallet ────────────────────────────────────────────────\n');
+      console.log(`  Wallet address: ${address}`);
+      console.log(`  Faucet:         ${networkConfig.faucet}`);
+      console.log('');
+      console.log('  Waiting for tNIGHT to arrive (poll every 10s)...');
+      const rawTimeout = Number(process.env.MIDNIGHT_FAUCET_TIMEOUT_MS);
+      const timeoutMs = Number.isFinite(rawTimeout) && rawTimeout > 0 ? rawTimeout : 300_000;
+      const start = Date.now();
+      while (true) {
+        await new Promise((r) => setTimeout(r, 10_000));
+        const s = await Rx.firstValueFrom(walletCtx.wallet.state().pipe(Rx.filter((x) => x.isSynced)));
+        const tn = s.unshielded.balances[unshieldedToken().raw] ?? 0n;
+        if (tn > 0n) {
+          console.log(`\n  Funded! tNIGHT balance: ${tn.toLocaleString()}\n`);
+          break;
+        }
+        if (Date.now() - start > timeoutMs) {
+          console.log(`\n  ❌ Funding not received within ${Math.round(timeoutMs / 60_000)} min.`);
+          console.log(`  Address: ${address}`);
+          console.log(`  Faucet:  ${networkConfig.faucet}`);
+          console.log('  Re-run setup after funding — your seed is preserved.\n');
+          await walletCtx.wallet.stop();
+          process.exit(1);
+        }
+        process.stdout.write(`\r  ...still waiting (${Math.round((Date.now() - start) / 1000)}s elapsed)`);
+      }
+    }
+  }
+
+  console.log('─── DUST Token Setup ───────────────────────────────────────────\n');
+  const dustState = await Rx.firstValueFrom(walletCtx.wallet.state().pipe(Rx.filter((s) => s.isSynced)));
+  const unregisteredUtxos = dustState.unshielded.availableCoins.filter(
+    (c: any) => !c.meta?.registeredForDustGeneration,
+  );
+  if (unregisteredUtxos.length > 0) {
+    console.log(`  Registering ${unregisteredUtxos.length} NIGHT UTXOs for DUST generation...`);
+    const recipe = await walletCtx.wallet.registerNightUtxosForDustGeneration(
+      unregisteredUtxos,
+      walletCtx.unshieldedKeystore.getPublicKey(),
+      (payload) => walletCtx.unshieldedKeystore.signData(payload),
+    );
+    const finalized = await walletCtx.wallet.finalizeRecipe(recipe);
+    await walletCtx.wallet.submitTransaction(finalized);
+  }
+  if (dustState.dust.balance(new Date()) === 0n) {
+    console.log('  Waiting for DUST tokens...');
+    await Rx.firstValueFrom(
+      walletCtx.wallet.state().pipe(
+        Rx.throttleTime(5000),
+        Rx.filter((s) => s.isSynced),
+        Rx.filter((s) => s.dust.balance(new Date()) > 0n),
+      ),
+    );
+  }
+  console.log('  DUST tokens ready!\n');
+
+  console.log('─── Deploy Contract ────────────────────────────────────────────\n');
+  console.log('  Checking proof server...');
+  const proofServerReady = await waitForProofServer();
+  if (!proofServerReady) {
+    console.log('\n  ❌ Proof server not responding. Run: docker compose up -d\n');
+    await walletCtx.wallet.stop();
+    process.exit(1);
+  }
+  process.stdout.write('\r  Proof server ready!                                 \n');
+
+  await initContract(walletCtx);
+  process.stdout.write('  Generating DUST...');
+  await new Promise((r) => setTimeout(r, 6000));
+  process.stdout.write(' done.\n');
+  console.log('  Deploying contract...\n');
+
+  const MAX_RETRIES = 20;
+  const RETRY_DELAY_MS = 5000;
+  let deployed: Awaited<ReturnType<typeof deployContract>> | undefined;
+
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      deployed = await deployContract(providers, {
+        compiledContract: compiledContract as any,
+        args: [],
+        privateStateId: PRIVATE_STATE_ID,
+        initialPrivateState: {},
+      });
+      break;
+    } catch (err: any) {
+      const errMsg = err?.message || err?.toString() || '';
+      const errCause = err?.cause?.message || err?.cause?.toString() || '';
+      const fullError = `${errMsg} ${errCause}`;
+
+      const isDustShortage =
+        fullError.includes('Not enough Dust') ||
+        fullError.includes('Insufficient Funds') ||
+        fullError.includes('could not balance dust');
+
+      if (!(isDustShortage && attempt === 1)) {
+        console.error(`\n  Attempt ${attempt} error: ${errMsg}`);
+        if (errCause && errCause !== errMsg) console.error(`  Cause: ${errCause}`);
+      }
+
+      if (isDustShortage) {
+        const currentState = await walletCtx.wallet.waitForSyncedState();
+        const dustBalance = currentState.dust.balance(new Date());
+        if (attempt < MAX_RETRIES) {
+          if (attempt === 1) {
+            console.log(`  Still generating DUST, retrying in ${RETRY_DELAY_MS / 1000}s...`);
+          } else {
+            console.log(`  ⏳ DUST balance: ${dustBalance.toLocaleString()} (attempt ${attempt}/${MAX_RETRIES}); retrying...`);
+          }
+          await new Promise((r) => setTimeout(r, RETRY_DELAY_MS));
+        } else {
+          console.log(`  ❌ Not enough DUST after ${MAX_RETRIES} retries (current: ${dustBalance.toLocaleString()})`);
+          await walletCtx.wallet.stop();
+          process.exit(1);
+        }
+      } else {
+        throw err;
+      }
+    }
+  }
+
+  if (!deployed) throw new Error('Deployment failed after all retries');
+
+  const contractAddress = deployed.deployTxData.public.contractAddress;
+  console.log('  ✅ Contract deployed successfully!\n');
+  console.log(`  Contract Address: ${contractAddress}\n`);
+
+  recordDeployment(network, contractAddress, address.toString());
+  console.log('  Saved to .midnight-state.json\n');
+
+  await persistWalletState(network, walletCtx);
+  await walletCtx.wallet.stop();
+  console.log('─── Deployment complete ────────────────────────────────────────\n');
+  console.log('  Next: npm run cli\n');
+}
+
+function isSelf(): boolean {
+  try {
+    return !!process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
+  } catch {
+    return false;
+  }
+}
+
+// direct invocation
+if (isSelf()) {
+  deploy().catch((err) => {
+    console.error(err);
+    process.exit(1);
+  });
+}
