@@ -6,7 +6,7 @@
 // • Only a secure digital fingerprint (hash) is saved on the Midnight blockchain.
 // ────────────────────────────────────────────────────────────────────────────
 
-import { useState, useRef, useMemo } from 'react';
+import { useState, useRef, useMemo, useEffect } from 'react';
 import type { NavSection } from '../App';
 import type { RegistryState, DataListing } from '../hooks/useIndexer';
 import type { WalletState, WalletType } from '../hooks/useMidnight';
@@ -26,6 +26,19 @@ interface Props {
   onIncrementVerified: () => void;
 }
 
+const FAVORITES_STORAGE_KEY = 'datavault_favorite_dataset_ids';
+
+function getSavedFavorites(): string[] {
+  try {
+    const raw = localStorage.getItem(FAVORITES_STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed;
+    }
+  } catch {}
+  return ['8f6123f8590a6ef0f07579e3ca6e2e0096f694d46a3f3c45dad5b77687fb4ca5'];
+}
+
 export function DatasetExchange({
   walletApi,
   walletState,
@@ -41,6 +54,19 @@ export function DatasetExchange({
 }: Props) {
   const [inspectModalListing, setInspectModalListing] = useState<DataListing | null>(null);
   const [quickVerifyListing, setQuickVerifyListing] = useState<DataListing | null>(null);
+  const [favorites, setFavorites] = useState<string[]>(() => getSavedFavorites());
+
+  const toggleFavorite = (datasetId: string) => {
+    setFavorites((prev) => {
+      const next = prev.includes(datasetId)
+        ? prev.filter((id) => id !== datasetId)
+        : [...prev, datasetId];
+      try {
+        localStorage.setItem(FAVORITES_STORAGE_KEY, JSON.stringify(next));
+      } catch {}
+      return next;
+    });
+  };
 
   return (
     <div>
@@ -59,6 +85,8 @@ export function DatasetExchange({
       {activeSection === 'marketplace' && (
         <MarketplaceView
           listings={registryState.listings}
+          favorites={favorites}
+          onToggleFavorite={toggleFavorite}
           loading={indexerLoading}
           error={indexerError}
           onRefresh={onRefresh}
@@ -88,6 +116,8 @@ export function DatasetExchange({
           walletApi={walletApi}
           walletState={walletState}
           listings={registryState.listings}
+          favorites={favorites}
+          onToggleFavorite={toggleFavorite}
           preselectedListing={quickVerifyListing}
           onIncrementVerified={onIncrementVerified}
           onGoRegister={() => onSelectSection('register')}
@@ -98,6 +128,8 @@ export function DatasetExchange({
       {inspectModalListing && (
         <InspectModal
           listing={inspectModalListing}
+          isFavorite={favorites.includes(inspectModalListing.datasetId)}
+          onToggleFavorite={() => toggleFavorite(inspectModalListing.datasetId)}
           onClose={() => setInspectModalListing(null)}
           onVerify={() => {
             setQuickVerifyListing(inspectModalListing);
@@ -340,6 +372,7 @@ function AboutView({
 
 const CURATED_CATEGORIES = [
   'All',
+  '★ Favorites',
   'Healthcare AI',
   'LLM Reasoning',
   'Financial AI',
@@ -349,6 +382,8 @@ const CURATED_CATEGORIES = [
 
 function MarketplaceView({
   listings,
+  favorites,
+  onToggleFavorite,
   loading,
   error,
   onRefresh,
@@ -357,6 +392,8 @@ function MarketplaceView({
   onGoRegister,
 }: {
   listings: DataListing[];
+  favorites: string[];
+  onToggleFavorite: (id: string) => void;
   loading: boolean;
   error: string | null;
   onRefresh: () => void;
@@ -374,8 +411,9 @@ function MarketplaceView({
       let matchCat = true;
       if (selectedCat === 'All') {
         matchCat = true;
+      } else if (selectedCat === '★ Favorites') {
+        matchCat = favorites.includes(l.datasetId);
       } else if (selectedCat === 'Other Domains') {
-        // Matches any custom, niche, or non-standard category
         matchCat = !l.category || !standardSet.has(l.category);
       } else {
         matchCat = Boolean(l.category && l.category.toLowerCase().includes(selectedCat.toLowerCase()));
@@ -390,7 +428,7 @@ function MarketplaceView({
 
       return matchCat && matchSearch;
     });
-  }, [listings, selectedCat, search]);
+  }, [listings, favorites, selectedCat, search]);
 
   return (
     <div style={{ maxWidth: 940, margin: '0 auto' }}>
@@ -412,17 +450,23 @@ function MarketplaceView({
           marginBottom: '1.75rem',
         }}
       >
-        <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
-          {CURATED_CATEGORIES.map((cat) => (
-            <button
-              key={cat}
-              onClick={() => setSelectedCat(cat)}
-              className={`btn btn-sm ${selectedCat === cat ? 'btn-primary' : 'btn-secondary'}`}
-              style={{ borderRadius: 'var(--radius-full)' }}
-            >
-              {cat}
-            </button>
-          ))}
+        <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', alignItems: 'center' }}>
+          {CURATED_CATEGORIES.map((cat) => {
+            const isFavCat = cat === '★ Favorites';
+            return (
+              <button
+                key={cat}
+                onClick={() => setSelectedCat(cat)}
+                className={`btn btn-sm ${selectedCat === cat ? (isFavCat ? 'btn-cyan' : 'btn-primary') : 'btn-secondary'}`}
+                style={{
+                  borderRadius: 'var(--radius-full)',
+                  color: isFavCat && selectedCat !== cat ? '#facc15' : undefined,
+                }}
+              >
+                {isFavCat ? `★ Favorites (${favorites.length})` : cat}
+              </button>
+            );
+          })}
         </div>
 
         <div style={{ display: 'flex', gap: '0.6rem', alignItems: 'center' }}>
@@ -459,94 +503,126 @@ function MarketplaceView({
       {/* Dataset Grid */}
       {filtered.length === 0 ? (
         <div className="card" style={{ textAlign: 'center', padding: '3.5rem 1.5rem' }}>
-          <div style={{ fontSize: '2.5rem', marginBottom: '1rem' }}>🛡️</div>
-          <h3 style={{ marginBottom: '0.5rem' }}>No datasets found</h3>
-          <p style={{ maxWidth: 420, margin: '0 auto 1.5rem', fontSize: '0.88rem' }}>
-            Try a different search term or register your own AI dataset.
+          <div style={{ fontSize: '2.5rem', marginBottom: '1rem' }}>{selectedCat === '★ Favorites' ? '⭐' : '🛡️'}</div>
+          <h3 style={{ marginBottom: '0.5rem' }}>
+            {selectedCat === '★ Favorites' ? 'No favorites saved yet' : 'No datasets found'}
+          </h3>
+          <p style={{ maxWidth: 460, margin: '0 auto 1.5rem', fontSize: '0.88rem' }}>
+            {selectedCat === '★ Favorites'
+              ? 'Click the ☆ Save button on any dataset card to add it to your favorites list for instant verification and tracking.'
+              : 'Try a different search term or register your own AI dataset.'}
           </p>
-          <button className="btn btn-primary" onClick={onGoRegister}>
-            Register New Dataset
-          </button>
+          {selectedCat === '★ Favorites' ? (
+            <button className="btn btn-secondary" onClick={() => setSelectedCat('All')}>
+              Browse All Datasets
+            </button>
+          ) : (
+            <button className="btn btn-primary" onClick={onGoRegister}>
+              Register New Dataset
+            </button>
+          )}
         </div>
       ) : (
         <div className="grid-2">
-          {filtered.map((item) => (
-            <div key={item.datasetId} className="card" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
-              <div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.75rem' }}>
-                  <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
-                    <span className="badge badge-purple">{item.category || 'AI Dataset'}</span>
-                    <span className="badge badge-green">{item.license}</span>
+          {filtered.map((item) => {
+            const isFav = favorites.includes(item.datasetId);
+            return (
+              <div key={item.datasetId} className="card" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+                <div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.75rem' }}>
+                    <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                      <span className="badge badge-purple">{item.category || 'AI Dataset'}</span>
+                      <span className="badge badge-green">{item.license}</span>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onToggleFavorite(item.datasetId);
+                        }}
+                        className="btn btn-ghost btn-sm"
+                        style={{
+                          padding: '0.12rem 0.5rem',
+                          fontSize: '0.74rem',
+                          borderRadius: 'var(--radius-full)',
+                          background: isFav ? 'rgba(234, 179, 8, 0.15)' : 'rgba(255, 255, 255, 0.05)',
+                          color: isFav ? '#facc15' : 'var(--text-subtle)',
+                          border: `1px solid ${isFav ? 'rgba(234, 179, 8, 0.4)' : 'rgba(255, 255, 255, 0.1)'}`,
+                        }}
+                        title={isFav ? 'Remove from favorites' : 'Save to favorites'}
+                      >
+                        {isFav ? '★ Saved' : '☆ Save'}
+                      </button>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                      <span className="pulse-dot" />
+                      <span style={{ fontSize: '0.72rem', color: 'var(--emerald-light)', fontWeight: 600 }}>
+                        Verified on Chain
+                      </span>
+                    </div>
                   </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-                    <span className="pulse-dot" />
-                    <span style={{ fontSize: '0.72rem', color: 'var(--emerald-light)', fontWeight: 600 }}>
-                      Verified on Chain
-                    </span>
-                  </div>
-                </div>
 
-                <h3 style={{ color: '#fff', fontSize: '1.15rem', marginBottom: '0.45rem' }}>{item.datasetName}</h3>
-                <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '1.25rem', lineHeight: 1.5 }}>
-                  {item.description || 'Verified AI training dataset with zero raw data exposure.'}
-                </p>
+                  <h3 style={{ color: '#fff', fontSize: '1.15rem', marginBottom: '0.45rem' }}>{item.datasetName}</h3>
+                  <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '1.25rem', lineHeight: 1.5 }}>
+                    {item.description || 'Verified AI training dataset with zero raw data exposure.'}
+                  </p>
 
-                <div
-                  style={{
-                    background: 'rgba(0, 0, 0, 0.35)',
-                    borderRadius: 'var(--radius-sm)',
-                    padding: '0.75rem 1rem',
-                    display: 'grid',
-                    gridTemplateColumns: '1fr 1fr',
-                    gap: '0.5rem',
-                    border: '1px solid var(--border-subtle)',
-                    marginBottom: '1rem',
-                  }}
-                >
-                  <div>
-                    <div style={{ fontSize: '0.68rem', color: 'var(--text-subtle)', textTransform: 'uppercase' }}>File Size</div>
-                    <div style={{ fontSize: '0.9rem', fontWeight: 600, color: '#fff' }}>{formatBytes(item.datasetSize)}</div>
-                  </div>
-                  <div>
-                    <div style={{ fontSize: '0.68rem', color: 'var(--text-subtle)', textTransform: 'uppercase' }}>Record Count</div>
-                    <div style={{ fontSize: '0.9rem', fontWeight: 600, color: '#fff' }}>{item.rowCount || '—'}</div>
-                  </div>
-                </div>
-
-                <div style={{ marginBottom: '1.25rem' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.7rem', color: 'var(--text-subtle)', marginBottom: '0.25rem' }}>
-                    <span>DIGITAL FINGERPRINT (HASH)</span>
-                    <span style={{ color: 'var(--cyan-light)' }}>Zero-Data Exposure</span>
-                  </div>
                   <div
-                    className="mono"
                     style={{
-                      background: 'rgba(0, 0, 0, 0.4)',
-                      padding: '0.45rem 0.75rem',
+                      background: 'rgba(0, 0, 0, 0.35)',
                       borderRadius: 'var(--radius-sm)',
-                      fontSize: '0.74rem',
-                      color: 'var(--cyan-light)',
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      whiteSpace: 'nowrap',
-                      border: '1px solid rgba(6, 182, 212, 0.2)',
+                      padding: '0.75rem 1rem',
+                      display: 'grid',
+                      gridTemplateColumns: '1fr 1fr',
+                      gap: '0.5rem',
+                      border: '1px solid var(--border-subtle)',
+                      marginBottom: '1rem',
                     }}
                   >
-                    {item.dataCommitment}
+                    <div>
+                      <div style={{ fontSize: '0.68rem', color: 'var(--text-subtle)', textTransform: 'uppercase' }}>File Size</div>
+                      <div style={{ fontSize: '0.9rem', fontWeight: 600, color: '#fff' }}>{formatBytes(item.datasetSize)}</div>
+                    </div>
+                    <div>
+                      <div style={{ fontSize: '0.68rem', color: 'var(--text-subtle)', textTransform: 'uppercase' }}>Record Count</div>
+                      <div style={{ fontSize: '0.9rem', fontWeight: 600, color: '#fff' }}>{item.rowCount || '—'}</div>
+                    </div>
+                  </div>
+
+                  <div style={{ marginBottom: '1.25rem' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.7rem', color: 'var(--text-subtle)', marginBottom: '0.25rem' }}>
+                      <span>DIGITAL FINGERPRINT (HASH)</span>
+                      <span style={{ color: 'var(--cyan-light)' }}>Zero-Data Exposure</span>
+                    </div>
+                    <div
+                      className="mono"
+                      style={{
+                        background: 'rgba(0, 0, 0, 0.4)',
+                        padding: '0.45rem 0.75rem',
+                        borderRadius: 'var(--radius-sm)',
+                        fontSize: '0.74rem',
+                        color: 'var(--cyan-light)',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                        border: '1px solid rgba(6, 182, 212, 0.2)',
+                      }}
+                    >
+                      {item.dataCommitment}
+                    </div>
                   </div>
                 </div>
-              </div>
 
-              <div style={{ display: 'flex', gap: '0.6rem', borderTop: '1px solid var(--border-subtle)', paddingTop: '1rem' }}>
-                <button className="btn btn-secondary btn-sm" style={{ flex: 1 }} onClick={() => onInspect(item)}>
-                  🔍 View Details
-                </button>
-                <button className="btn btn-primary btn-sm" style={{ flex: 1 }} onClick={() => onVerify(item)}>
-                  ⚡ Verify Authenticity
-                </button>
+                <div style={{ display: 'flex', gap: '0.6rem', borderTop: '1px solid var(--border-subtle)', paddingTop: '1rem' }}>
+                  <button className="btn btn-secondary btn-sm" style={{ flex: 1 }} onClick={() => onInspect(item)}>
+                    🔍 View Details
+                  </button>
+                  <button className="btn btn-primary btn-sm" style={{ flex: 1 }} onClick={() => onVerify(item)}>
+                    ⚡ Verify Authenticity
+                  </button>
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>
@@ -1037,6 +1113,8 @@ function VerifierView({
   walletApi,
   walletState,
   listings,
+  favorites,
+  onToggleFavorite,
   preselectedListing,
   onIncrementVerified,
   onGoRegister,
@@ -1044,23 +1122,59 @@ function VerifierView({
   walletApi: any;
   walletState: WalletState;
   listings: DataListing[];
+  favorites: string[];
+  onToggleFavorite: (id: string) => void;
   preselectedListing: DataListing | null;
   onIncrementVerified: () => void;
   onGoRegister?: () => void;
 }) {
   const [selectedId, setSelectedId] = useState<string>(preselectedListing?.datasetId || listings[0]?.datasetId || '');
+  const [showSelector, setShowSelector] = useState(false);
+  const [selectorSearch, setSelectorSearch] = useState('');
+  const [selectorCat, setSelectorCat] = useState('All');
   const [testFile, setTestFile] = useState<File | null>(null);
   const [isVerifying, setIsVerifying] = useState(false);
   const [result, setResult] = useState<{
     matched: boolean;
-    mode: 'file-check' | 'on-chain-record';
+    mode: 'zk-onchain' | 'local-tamper';
     txHash?: string;
     computedHash?: string;
     expectedHash?: string;
   } | null>(null);
 
+  // Keep selectedId in sync if preselectedListing changes from outside (e.g. Marketplace click)
+  useEffect(() => {
+    if (preselectedListing?.datasetId) {
+      setSelectedId(preselectedListing.datasetId);
+      setResult(null);
+    }
+  }, [preselectedListing]);
+
   const activeListing = listings.find((l) => l.datasetId === selectedId) || listings[0];
   const isDemo = walletState.status === 'connected' && walletState.walletType === 'demo';
+  const isActiveFav = activeListing ? favorites.includes(activeListing.datasetId) : false;
+
+  const filteredSelectorListings = useMemo(() => {
+    return listings.filter((l) => {
+      let matchCat = true;
+      if (selectorCat === 'All') {
+        matchCat = true;
+      } else if (selectorCat === '★ Favorites') {
+        matchCat = favorites.includes(l.datasetId);
+      } else {
+        matchCat = Boolean(l.category && l.category.toLowerCase().includes(selectorCat.toLowerCase()));
+      }
+
+      const matchSearch =
+        !selectorSearch ||
+        l.datasetName.toLowerCase().includes(selectorSearch.toLowerCase()) ||
+        l.datasetId.toLowerCase().includes(selectorSearch.toLowerCase()) ||
+        (l.category && l.category.toLowerCase().includes(selectorSearch.toLowerCase())) ||
+        l.license.toLowerCase().includes(selectorSearch.toLowerCase());
+
+      return matchCat && matchSearch;
+    });
+  }, [listings, favorites, selectorCat, selectorSearch]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0];
@@ -1070,43 +1184,22 @@ function VerifierView({
     }
   };
 
-  const handleClearFile = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    e.preventDefault();
+  const handleClearFile = (e?: React.MouseEvent) => {
+    if (e) {
+      e.stopPropagation();
+      e.preventDefault();
+    }
     setTestFile(null);
     setResult(null);
     const input = document.getElementById('verify-input') as HTMLInputElement;
     if (input) input.value = '';
   };
 
-  const handleExecuteProof = async () => {
+  const handleExecuteZKProof = async () => {
     setIsVerifying(true);
-
     try {
-      let hashHex = '';
-      const mode = testFile ? 'file-check' : 'on-chain-record';
-
-      if (testFile) {
-        const buffer = await testFile.arrayBuffer();
-        const hashBuf = await crypto.subtle.digest('SHA-256', buffer);
-        hashHex = Array.from(new Uint8Array(hashBuf))
-          .map((b) => b.toString(16).padStart(2, '0'))
-          .join('');
-
-        if (activeListing && hashHex.toLowerCase() !== activeListing.dataCommitment.toLowerCase()) {
-          setResult({
-            matched: false,
-            mode: 'file-check',
-            computedHash: hashHex,
-            expectedHash: activeListing.dataCommitment,
-          });
-          setIsVerifying(false);
-          return;
-        }
-      }
-
       await new Promise((r) => setTimeout(r, 800));
-      let tx = '0x' + (activeListing?.dataCommitment || hashHex || '9a8b7c6d5e4f3a2b1c0d9e8f7a6b5c4d').slice(0, 32) + '...verified';
+      let tx = '0x' + (activeListing?.dataCommitment || '9a8b7c6d5e4f3a2b1c0d9e8f7a6b5c4d').slice(0, 32) + '...verified';
 
       if (walletApi && typeof walletApi.callContract === 'function') {
         const res = await walletApi.callContract({
@@ -1119,200 +1212,428 @@ function VerifierView({
       onIncrementVerified();
       setResult({
         matched: true,
-        mode,
+        mode: 'zk-onchain',
         txHash: tx,
-        computedHash: hashHex || undefined,
         expectedHash: activeListing?.dataCommitment,
       });
     } catch {
-      setResult({ matched: false, mode: testFile ? 'file-check' : 'on-chain-record' });
+      setResult({ matched: false, mode: 'zk-onchain' });
+    } finally {
+      setIsVerifying(false);
+    }
+  };
+
+  const handleExecuteLocalFileCheck = async () => {
+    if (!testFile || !activeListing) return;
+    setIsVerifying(true);
+
+    try {
+      const buffer = await testFile.arrayBuffer();
+      const hashBuf = await crypto.subtle.digest('SHA-256', buffer);
+      const hashHex = Array.from(new Uint8Array(hashBuf))
+        .map((b) => b.toString(16).padStart(2, '0'))
+        .join('');
+
+      await new Promise((r) => setTimeout(r, 600));
+
+      if (hashHex.toLowerCase() !== activeListing.dataCommitment.toLowerCase()) {
+        setResult({
+          matched: false,
+          mode: 'local-tamper',
+          computedHash: hashHex,
+          expectedHash: activeListing.dataCommitment,
+        });
+        setIsVerifying(false);
+        return;
+      }
+
+      let tx = '0x' + hashHex.slice(0, 32) + '...tamper-free';
+      if (walletApi && typeof walletApi.callContract === 'function') {
+        const res = await walletApi.callContract({
+          circuit: 'proveIntegrity',
+          args: { datasetId: activeListing.datasetId },
+        });
+        tx = res.txHash || tx;
+      }
+
+      onIncrementVerified();
+      setResult({
+        matched: true,
+        mode: 'local-tamper',
+        txHash: tx,
+        computedHash: hashHex,
+        expectedHash: activeListing.dataCommitment,
+      });
+    } catch {
+      setResult({ matched: false, mode: 'local-tamper' });
     } finally {
       setIsVerifying(false);
     }
   };
 
   return (
-    <div style={{ maxWidth: 760, margin: '0 auto' }}>
-      <div className="card">
+    <div style={{ maxWidth: 880, margin: '0 auto' }}>
+      <div className="card" style={{ marginBottom: '2rem' }}>
+        {/* Header */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.4rem', flexWrap: 'wrap', gap: '0.5rem' }}>
-          <h2 style={{ fontSize: '1.4rem', margin: 0 }}>Verify Dataset Authenticity</h2>
-          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-            <span className={`badge ${testFile ? 'badge-cyan' : 'badge-purple'}`} style={{ fontSize: '0.74rem' }}>
-              {testFile ? 'Mode: Local File Tamper Check' : 'Mode: Direct On-Chain Record Verification'}
+          <div>
+            <h2 style={{ fontSize: '1.45rem', margin: 0 }}>Verify Dataset Authenticity</h2>
+            <p style={{ fontSize: '0.88rem', color: 'var(--text-muted)', marginTop: '0.2rem', marginBottom: 0 }}>
+              Verify cryptographic integrity on Midnight blockchain with zero exposure of raw records.
+            </p>
+          </div>
+          {isDemo && (
+            <span className="badge badge-green" style={{ fontSize: '0.74rem' }}>
+              ✓ Demo Sandbox Active
             </span>
-            {isDemo && (
-              <span className="badge badge-green" style={{ fontSize: '0.74rem' }}>
-                ✓ Demo Sandbox Active
-              </span>
+          )}
+        </div>
+
+        {/* ── STEP 1: SELECTED DATASET SPOTLIGHT ─────────────────────────── */}
+        <div style={{ marginTop: '1.5rem', marginBottom: '1.75rem' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.6rem' }}>
+            <span style={{ fontSize: '0.76rem', fontWeight: 700, color: 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+              Target Registered Dataset
+            </span>
+            {listings.length > 1 && (
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                onClick={() => setShowSelector(!showSelector)}
+                style={{ fontSize: '0.76rem', padding: '0.25rem 0.65rem' }}
+              >
+                {showSelector ? '▲ Close Selector' : `🔄 Switch Dataset (${listings.length} available)`}
+              </button>
             )}
           </div>
-        </div>
-        <p style={{ fontSize: '0.88rem', color: 'var(--text-muted)', marginBottom: '1.5rem' }}>
-          {testFile
-            ? 'Testing your local file copy against the immutable Midnight blockchain commitment.'
-            : 'Verifying the registered dataset record and zero-knowledge integrity proof on the Midnight blockchain.'}
-        </p>
 
-        {/* Dataset Selector */}
-        {listings.length > 0 ? (
-          <div style={{ marginBottom: '1.25rem' }}>
-            <label className="form-label">Select Registered Dataset to Test</label>
-            <select
-              className="select"
-              value={selectedId}
-              onChange={(e) => {
-                setSelectedId(e.target.value);
-                setResult(null);
+          {activeListing ? (
+            <div
+              style={{
+                background: 'rgba(139, 92, 246, 0.05)',
+                border: '1px solid rgba(139, 92, 246, 0.25)',
+                borderRadius: 'var(--radius-md)',
+                padding: '1.25rem',
               }}
             >
-              {listings.map((l) => (
-                <option key={l.datasetId} value={l.datasetId}>
-                  {l.datasetName} ({l.license})
-                </option>
-              ))}
-            </select>
-          </div>
-        ) : (
-          <div
-            style={{
-              background: 'rgba(139, 92, 246, 0.06)',
-              border: '1px solid rgba(139, 92, 246, 0.25)',
-              borderRadius: 'var(--radius-sm)',
-              padding: '1rem 1.25rem',
-              marginBottom: '1.5rem',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              flexWrap: 'wrap',
-              gap: '0.75rem',
-            }}
-          >
-            <div>
-              <div style={{ fontWeight: 600, color: '#fff', fontSize: '0.9rem', marginBottom: '0.2rem' }}>
-                No datasets registered yet on blockchain
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '0.6rem' }}>
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '0.35rem', flexWrap: 'wrap' }}>
+                    <h3 style={{ fontSize: '1.15rem', color: '#fff', margin: 0 }}>
+                      {activeListing.datasetName}
+                    </h3>
+                    <button
+                      type="button"
+                      onClick={() => onToggleFavorite(activeListing.datasetId)}
+                      className="btn btn-ghost btn-sm"
+                      style={{
+                        padding: '0.12rem 0.55rem',
+                        fontSize: '0.74rem',
+                        borderRadius: 'var(--radius-full)',
+                        background: isActiveFav ? 'rgba(234, 179, 8, 0.15)' : 'rgba(255, 255, 255, 0.05)',
+                        color: isActiveFav ? '#facc15' : 'var(--text-subtle)',
+                        border: `1px solid ${isActiveFav ? 'rgba(234, 179, 8, 0.4)' : 'rgba(255, 255, 255, 0.1)'}`,
+                      }}
+                      title={isActiveFav ? 'Remove from favorites' : 'Add to favorites'}
+                    >
+                      {isActiveFav ? '★ In Favorites' : '☆ Add to Favorites'}
+                    </button>
+                  </div>
+
+                  <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                    <span className="badge badge-purple" style={{ fontSize: '0.7rem' }}>{activeListing.category || 'AI Dataset'}</span>
+                    <span className="badge badge-green" style={{ fontSize: '0.7rem' }}>{activeListing.license}</span>
+                    {activeListing.complianceTag && (
+                      <span className="badge badge-cyan" style={{ fontSize: '0.7rem' }}>{activeListing.complianceTag}</span>
+                    )}
+                  </div>
+                </div>
+
+                <div style={{ textAlign: 'right', minWidth: 140 }}>
+                  <div style={{ fontSize: '0.72rem', color: 'var(--text-subtle)', textTransform: 'uppercase' }}>Records & Size</div>
+                  <div style={{ fontSize: '0.85rem', fontWeight: 600, color: '#fff' }}>
+                    {activeListing.rowCount || '—'} • {formatBytes(activeListing.datasetSize)}
+                  </div>
+                </div>
               </div>
-              <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                Upload any candidate file below to test client-side zero-knowledge hash computation, or register a new dataset.
+
+              <div style={{ marginTop: '0.8rem', paddingTop: '0.75rem', borderTop: '1px solid rgba(255, 255, 255, 0.06)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.68rem', color: 'var(--text-subtle)', marginBottom: '0.2rem' }}>
+                  <span>MIDNIGHT ON-CHAIN COMMITMENT (SHA-256 ANCHOR)</span>
+                  <span style={{ color: 'var(--emerald-light)' }}>Zero-Knowledge Protected</span>
+                </div>
+                <div
+                  className="mono"
+                  style={{
+                    background: 'rgba(0, 0, 0, 0.45)',
+                    padding: '0.4rem 0.65rem',
+                    borderRadius: 'var(--radius-sm)',
+                    fontSize: '0.74rem',
+                    color: 'var(--cyan-light)',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                    border: '1px solid rgba(6, 182, 212, 0.2)',
+                  }}
+                >
+                  {activeListing.dataCommitment}
+                </div>
               </div>
             </div>
-            {onGoRegister && (
-              <button className="btn btn-secondary btn-sm" onClick={onGoRegister}>
-                📝 Register Dataset
-              </button>
+          ) : (
+            <div className="card" style={{ textAlign: 'center', padding: '2rem' }}>
+              <p style={{ margin: 0, color: 'var(--text-muted)' }}>No dataset registered on blockchain.</p>
+              {onGoRegister && (
+                <button className="btn btn-primary btn-sm" onClick={onGoRegister} style={{ marginTop: '0.75rem' }}>
+                  📝 Register First Dataset
+                </button>
+              )}
+            </div>
+          )}
+
+          {/* ── EXPANDABLE DATASET SELECTOR MODAL / GRID ───────────────────── */}
+          {showSelector && listings.length > 0 && (
+            <div
+              style={{
+                marginTop: '1rem',
+                background: 'rgba(0, 0, 0, 0.55)',
+                border: '1px solid var(--border-subtle)',
+                borderRadius: 'var(--radius-md)',
+                padding: '1.25rem',
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap', marginBottom: '1rem' }}>
+                <div style={{ fontWeight: 600, color: '#fff', fontSize: '0.88rem' }}>
+                  Choose Dataset to Verify ({filteredSelectorListings.length} results):
+                </div>
+                <input
+                  type="text"
+                  placeholder="Search dataset name or category…"
+                  className="input"
+                  value={selectorSearch}
+                  onChange={(e) => setSelectorSearch(e.target.value)}
+                  style={{ width: 220, padding: '0.35rem 0.75rem', fontSize: '0.8rem' }}
+                />
+              </div>
+
+              {/* Category Filter Pills */}
+              <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap', marginBottom: '1rem' }}>
+                {['All', '★ Favorites', 'Healthcare AI', 'LLM Reasoning', 'Financial AI', 'Computer Vision'].map((cat) => {
+                  const isFavPill = cat === '★ Favorites';
+                  return (
+                    <button
+                      key={cat}
+                      type="button"
+                      onClick={() => setSelectorCat(cat)}
+                      className={`btn btn-sm ${selectorCat === cat ? (isFavPill ? 'btn-cyan' : 'btn-primary') : 'btn-secondary'}`}
+                      style={{
+                        fontSize: '0.72rem',
+                        padding: '0.2rem 0.6rem',
+                        borderRadius: 'var(--radius-full)',
+                        color: isFavPill && selectorCat !== cat ? '#facc15' : undefined,
+                      }}
+                    >
+                      {isFavPill ? `★ Favorites (${favorites.length})` : cat}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Dataset Cards List */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '0.75rem', maxHeight: 280, overflowY: 'auto' }}>
+                {filteredSelectorListings.map((item) => {
+                  const isSelected = item.datasetId === selectedId;
+                  const isItemFav = favorites.includes(item.datasetId);
+                  return (
+                    <div
+                      key={item.datasetId}
+                      onClick={() => {
+                        setSelectedId(item.datasetId);
+                        setShowSelector(false);
+                        setResult(null);
+                        handleClearFile();
+                      }}
+                      style={{
+                        background: isSelected ? 'rgba(6, 182, 212, 0.12)' : 'rgba(255, 255, 255, 0.03)',
+                        border: `1px solid ${isSelected ? 'var(--cyan-light)' : 'rgba(255, 255, 255, 0.08)'}`,
+                        borderRadius: 'var(--radius-sm)',
+                        padding: '0.85rem',
+                        cursor: 'pointer',
+                        transition: 'all 0.15s ease',
+                      }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.3rem' }}>
+                        <div style={{ display: 'flex', gap: '0.3rem', alignItems: 'center' }}>
+                          <span className="badge badge-purple" style={{ fontSize: '0.65rem' }}>{item.category || 'AI'}</span>
+                          {isItemFav && <span style={{ color: '#facc15', fontSize: '0.75rem' }}>★</span>}
+                        </div>
+                        {isSelected && (
+                          <span className="badge badge-green" style={{ fontSize: '0.65rem' }}>✓ Selected</span>
+                        )}
+                      </div>
+                      <div style={{ fontWeight: 600, color: '#fff', fontSize: '0.86rem', marginBottom: '0.25rem', lineHeight: 1.3 }}>
+                        {item.datasetName}
+                      </div>
+                      <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+                        {item.license} • {formatBytes(item.datasetSize)}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* ── STEP 2: PRIMARY ACTION - ZERO-KNOWLEDGE PROOF (NO UPLOAD REQUIRED) ─ */}
+        <div
+          style={{
+            background: 'linear-gradient(135deg, rgba(139, 92, 246, 0.08) 0%, rgba(6, 182, 212, 0.04) 100%)',
+            border: '1px solid rgba(139, 92, 246, 0.35)',
+            borderRadius: 'var(--radius-md)',
+            padding: '1.4rem',
+            marginBottom: '1.75rem',
+          }}
+        >
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '1rem' }}>
+            <div style={{ maxWidth: 500 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginBottom: '0.3rem' }}>
+                <span style={{ fontSize: '1.1rem' }}>⚡</span>
+                <h3 style={{ fontSize: '1.05rem', color: '#fff', margin: 0 }}>
+                  Execute Zero-Knowledge Authenticity Proof
+                </h3>
+              </div>
+              <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)', margin: 0, lineHeight: 1.5 }}>
+                Proves on the Midnight blockchain that the dataset's cryptographic commitment exists and satisfies the zero-knowledge circuit (<code>proveIntegrity</code>) — without needing to upload or reveal any records.
+              </p>
+            </div>
+
+            <button
+              className="btn btn-primary btn-lg"
+              onClick={handleExecuteZKProof}
+              disabled={isVerifying || !activeListing}
+              style={{ minWidth: 220 }}
+            >
+              {isVerifying ? '⚡ Proving on Midnight…' : '⚡ Confirm Authenticity on Blockchain'}
+            </button>
+          </div>
+        </div>
+
+        {/* ── RESULT NOTIFICATION BOX ────────────────────────────────────── */}
+        {result && (
+          <div
+            style={{
+              background: result.matched ? 'rgba(16, 185, 129, 0.1)' : 'rgba(244, 63, 94, 0.1)',
+              border: `1px solid ${result.matched ? 'rgba(16, 185, 129, 0.35)' : 'rgba(244, 63, 94, 0.35)'}`,
+              borderRadius: 'var(--radius-sm)',
+              padding: '1rem 1.25rem',
+              color: result.matched ? '#6ee7b7' : '#fda4af',
+              fontSize: '0.85rem',
+              marginBottom: '1.75rem',
+            }}
+          >
+            <div style={{ fontWeight: 700, marginBottom: '0.3rem', fontSize: '0.95rem' }}>
+              {result.matched
+                ? result.mode === 'local-tamper'
+                  ? '✓ 100% Genuine: Local File Matches On-Chain Blockchain Fingerprint!'
+                  : '✓ 100% Genuine: Dataset Authenticity Confirmed on Midnight Blockchain!'
+                : '✗ Verification Failed: Hash Mismatch / Tampering Detected'}
+            </div>
+
+            <div style={{ fontSize: '0.8rem', opacity: 0.9, marginTop: '0.2rem', lineHeight: 1.4 }}>
+              {result.matched
+                ? result.mode === 'local-tamper'
+                  ? 'Your local file was hashed in-browser (SHA-256) and perfectly matches the immutable on-chain commitment.'
+                  : 'Midnight zero-knowledge circuit (proveIntegrity) successfully verified dataset commitment authenticity on the ledger.'
+                : 'The cryptographic fingerprint of your local file does not match the immutable commitment stored on Midnight.'}
+            </div>
+
+            {result.txHash && (
+              <div className="mono" style={{ fontSize: '0.76rem', marginTop: '0.5rem', color: '#fff' }}>
+                Proof Transaction: {result.txHash}
+              </div>
+            )}
+            {result.computedHash && (
+              <div className="mono" style={{ fontSize: '0.72rem', opacity: 0.85, marginTop: '0.2rem' }}>
+                Computed Local File Hash: {result.computedHash}
+              </div>
+            )}
+            {result.expectedHash && !result.matched && (
+              <div className="mono" style={{ fontSize: '0.72rem', opacity: 0.85, marginTop: '0.2rem' }}>
+                Expected On-Chain Hash: {result.expectedHash}
+              </div>
             )}
           </div>
         )}
 
-        {/* Upload candidate file */}
-        <div style={{ marginBottom: '1.5rem' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.4rem' }}>
-            <label className="form-label" style={{ margin: 0 }}>
-              {testFile ? 'Selected File for Tamper Verification' : 'Optional: Upload Local File Copy to Verify'}
-            </label>
+        {/* ── STEP 3: OPTIONAL / SECONDARY LOCAL FILE TAMPER CHECK ────────── */}
+        <div
+          style={{
+            border: '1px solid var(--border-subtle)',
+            borderRadius: 'var(--radius-md)',
+            padding: '1.1rem 1.25rem',
+            background: 'rgba(0, 0, 0, 0.25)',
+          }}
+        >
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+              <span style={{ fontSize: '1rem' }}>📁</span>
+              <span style={{ fontWeight: 600, color: '#fff', fontSize: '0.88rem' }}>
+                Optional: Have a local copy of this dataset? Test for tampering
+              </span>
+            </div>
             {testFile && (
               <button
                 type="button"
-                onClick={handleClearFile}
+                onClick={() => handleClearFile()}
                 style={{
                   background: 'none',
                   border: 'none',
                   color: 'var(--rose-light, #fda4af)',
                   cursor: 'pointer',
-                  fontSize: '0.78rem',
+                  fontSize: '0.76rem',
                   textDecoration: 'underline',
                   padding: 0,
                 }}
               >
-                ✕ Clear File (Switch to Direct On-Chain Record Mode)
+                ✕ Clear File
               </button>
             )}
           </div>
 
-          <div
-            style={{
-              border: testFile ? '2px solid rgba(6, 182, 212, 0.4)' : '2px dashed var(--border-subtle)',
-              borderRadius: 'var(--radius-md)',
-              padding: '1.8rem',
-              textAlign: 'center',
-              background: testFile ? 'rgba(6, 182, 212, 0.04)' : 'rgba(255, 255, 255, 0.02)',
-              cursor: 'pointer',
-            }}
-          >
+          <p style={{ fontSize: '0.78rem', color: 'var(--text-subtle)', marginBottom: '0.9rem', lineHeight: 1.4 }}>
+            Calculates SHA-256 right inside your browser memory (file is never uploaded) to verify that your local copy has not been modified or corrupted.
+          </p>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
             <input type="file" style={{ display: 'none' }} id="verify-input" onChange={handleFileChange} />
-            <label htmlFor="verify-input" style={{ cursor: 'pointer', display: 'block' }}>
-              {testFile ? (
-                <div>
-                  <div style={{ fontSize: '1.6rem', marginBottom: '0.2rem' }}>📄</div>
-                  <div style={{ fontWeight: 600, color: '#fff', fontSize: '0.95rem' }}>{testFile.name}</div>
-                  <div style={{ fontSize: '0.78rem', color: 'var(--cyan-light)', marginTop: '0.2rem' }}>
-                    Ready to compare local SHA-256 fingerprint against Midnight blockchain commitment ({formatBytes(testFile.size)})
-                  </div>
-                  <div style={{ fontSize: '0.72rem', color: 'var(--text-subtle)', marginTop: '0.4rem' }}>
-                    Click to choose a different file
-                  </div>
-                </div>
-              ) : (
-                <div>
-                  <div style={{ fontSize: '1.6rem', marginBottom: '0.2rem' }}>📥</div>
-                  <div style={{ fontWeight: 600, color: '#fff', fontSize: '0.92rem' }}>Click to Choose Local File to Check</div>
-                  <div style={{ fontSize: '0.76rem', color: 'var(--text-subtle)', marginTop: '0.2rem' }}>
-                    (Optional — leave empty to directly test on-chain dataset registration & ZK circuit on Midnight)
-                  </div>
-                </div>
-              )}
+            <label
+              htmlFor="verify-input"
+              className="btn btn-secondary btn-sm"
+              style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}
+            >
+              📥 {testFile ? 'Choose Different File' : 'Select Local File to Test'}
             </label>
-          </div>
-        </div>
 
-        {/* Result */}
-        {result && (
-          <div
-            style={{
-              background: result.matched ? 'rgba(16, 185, 129, 0.1)' : 'rgba(244, 63, 94, 0.1)',
-              border: `1px solid ${result.matched ? 'rgba(16, 185, 129, 0.3)' : 'rgba(244, 63, 94, 0.3)'}`,
-              borderRadius: 'var(--radius-sm)',
-              padding: '0.9rem 1rem',
-              color: result.matched ? '#6ee7b7' : '#fda4af',
-              fontSize: '0.85rem',
-              marginBottom: '1.5rem',
-            }}
-          >
-            <div style={{ fontWeight: 700, marginBottom: '0.3rem', fontSize: '0.92rem' }}>
-              {result.matched
-                ? result.mode === 'file-check'
-                  ? '✓ 100% Genuine: Local File Matches On-Chain Blockchain Fingerprint!'
-                  : '✓ 100% Genuine: Dataset Registration & ZK Integrity Verified on Blockchain!'
-                : '✗ Hash Mismatch: Local file has been modified or does not match on-chain commitment'}
-            </div>
-
-            <div style={{ fontSize: '0.78rem', opacity: 0.9, marginTop: '0.2rem' }}>
-              {result.matched
-                ? result.mode === 'file-check'
-                  ? 'Client-side SHA-256 computation perfectly matches the registered Midnight zero-knowledge commitment.'
-                  : 'On-chain zero-knowledge circuit (proveIntegrity) successfully verified dataset existence & commitment authenticity.'
-                : 'The cryptographic fingerprint of your local file does not match the immutable commitment stored on Midnight.'}
-            </div>
-
-            {result.txHash && <div className="mono" style={{ fontSize: '0.75rem', marginTop: '0.4rem' }}>Proof Transaction: {result.txHash}</div>}
-            {result.computedHash && <div className="mono" style={{ fontSize: '0.72rem', opacity: 0.85, marginTop: '0.2rem' }}>Computed File Hash: {result.computedHash}</div>}
-            {result.expectedHash && !result.matched && (
-              <div className="mono" style={{ fontSize: '0.72rem', opacity: 0.85, marginTop: '0.2rem' }}>Expected On-Chain Hash: {result.expectedHash}</div>
+            {testFile ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flex: 1, minWidth: 200 }}>
+                <span style={{ fontSize: '0.82rem', color: '#fff', fontWeight: 600 }}>
+                  📄 {testFile.name} ({formatBytes(testFile.size)})
+                </span>
+                <button
+                  className="btn btn-cyan btn-sm"
+                  onClick={handleExecuteLocalFileCheck}
+                  disabled={isVerifying}
+                >
+                  {isVerifying ? 'Checking Hash…' : '⚡ Check Local Tamper-Resistance'}
+                </button>
+              </div>
+            ) : (
+              <span style={{ fontSize: '0.76rem', color: 'var(--text-subtle)' }}>
+                No file selected (optional)
+              </span>
             )}
           </div>
-        )}
-
-        <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-          <button
-            className="btn btn-primary btn-lg"
-            onClick={handleExecuteProof}
-            disabled={isVerifying || (!activeListing && !testFile)}
-          >
-            {isVerifying
-              ? '⚡ Verifying Authenticity…'
-              : testFile
-              ? '⚡ Verify Local File against Blockchain'
-              : '⚡ Verify On-Chain Dataset Record'}
-          </button>
         </div>
       </div>
     </div>
@@ -1322,10 +1643,14 @@ function VerifierView({
 // ── Details Modal ─────────────────────────────────────────────────────────────
 function InspectModal({
   listing,
+  isFavorite,
+  onToggleFavorite,
   onClose,
   onVerify,
 }: {
   listing: DataListing;
+  isFavorite: boolean;
+  onToggleFavorite: () => void;
   onClose: () => void;
   onVerify: () => void;
 }) {
@@ -1355,8 +1680,29 @@ function InspectModal({
         </div>
 
         <div style={{ marginBottom: '1.2rem' }}>
-          <div style={{ fontWeight: 700, color: '#fff', fontSize: '1.05rem', marginBottom: '0.2rem' }}>{listing.datasetName}</div>
-          <span className="badge badge-purple">{listing.license}</span>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '0.5rem', marginBottom: '0.3rem' }}>
+            <div style={{ fontWeight: 700, color: '#fff', fontSize: '1.05rem' }}>{listing.datasetName}</div>
+            <button
+              type="button"
+              onClick={onToggleFavorite}
+              className="btn btn-ghost btn-sm"
+              style={{
+                padding: '0.12rem 0.55rem',
+                fontSize: '0.74rem',
+                borderRadius: 'var(--radius-full)',
+                background: isFavorite ? 'rgba(234, 179, 8, 0.15)' : 'rgba(255, 255, 255, 0.05)',
+                color: isFavorite ? '#facc15' : 'var(--text-subtle)',
+                border: `1px solid ${isFavorite ? 'rgba(234, 179, 8, 0.4)' : 'rgba(255, 255, 255, 0.1)'}`,
+              }}
+            >
+              {isFavorite ? '★ Favorited' : '☆ Add to Favorites'}
+            </button>
+          </div>
+          <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
+            <span className="badge badge-purple">{listing.category || 'AI Dataset'}</span>
+            <span className="badge badge-green">{listing.license}</span>
+            {listing.complianceTag && <span className="badge badge-cyan">{listing.complianceTag}</span>}
+          </div>
         </div>
 
         <div style={{ background: 'rgba(0,0,0,0.4)', padding: '0.85rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-subtle)', marginBottom: '1.2rem' }}>
