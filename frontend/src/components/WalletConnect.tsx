@@ -1,7 +1,7 @@
 // WalletConnect.tsx
-// Simple, Clean Wallet Connection with Midnight Bech32 Address Validation.
+// Pure Web3 Connection: Connect Authenticated Wallets (Lace, 1AM) or Instant Sandbox.
 
-import { useState, useMemo } from 'react';
+import { useState } from 'react';
 import type { MidnightHook } from '../hooks/useMidnight';
 
 interface Props {
@@ -13,23 +13,10 @@ function truncate(addr: string): string {
   return `${addr.slice(0, 10)}…${addr.slice(-6)}`;
 }
 
-// Validates official Midnight Bech32 address format
-function isValidMidnightAddress(addr: string): boolean {
-  const clean = addr.trim();
-  // Midnight addresses follow: mn_addr_<network>1<bech32 payload>
-  const regex = /^mn_addr_(preview|test|devnet|undeployed|mainnet)1[0-9a-z]{45,90}$/i;
-  return regex.test(clean);
-}
-
 export function WalletConnect({ hook }: Props) {
-  const { walletState, connect, disconnect, targetNetwork, isExtensionAvailable, detectedExtensionName } = hook;
+  const { walletState, connect, disconnect, targetNetwork, isLaceAvailable, is1amAvailable, topUpDemoBalance } = hook;
   const [showMenu, setShowMenu] = useState(false);
-  const [customInput, setCustomInput] = useState('');
   const [copied, setCopied] = useState(false);
-
-  const isCustomValid = useMemo(() => {
-    return isValidMidnightAddress(customInput);
-  }, [customInput]);
 
   const copy = (text: string) => {
     navigator.clipboard.writeText(text);
@@ -57,7 +44,7 @@ export function WalletConnect({ hook }: Props) {
                 position: 'absolute',
                 top: 'calc(100% + 8px)',
                 right: 0,
-                width: 330,
+                width: 320,
                 background: '#0d101d',
                 border: '1px solid rgba(139, 92, 246, 0.4)',
                 borderRadius: 'var(--radius-md)',
@@ -70,90 +57,63 @@ export function WalletConnect({ hook }: Props) {
                 Connect to Midnight
               </div>
               <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: '0.9rem' }}>
-                Select your browser wallet or enter your Midnight Preview address.
+                Select your authenticated Midnight wallet to sign transactions.
               </p>
 
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem', marginBottom: '1rem' }}>
-                {/* 1. Browser Extension */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+                {/* 1. 1AM Wallet Extension */}
                 <button
                   className="btn btn-secondary btn-sm"
                   onClick={() => {
                     setShowMenu(false);
-                    connect('extension');
+                    connect('1am');
                   }}
-                  style={{ justifyContent: 'space-between', padding: '0.6rem 0.85rem' }}
+                  style={{ justifyContent: 'space-between', padding: '0.65rem 0.85rem' }}
+                >
+                  <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <span>🌙</span>
+                    <span>1AM Wallet Extension</span>
+                  </span>
+                  <span className="badge badge-cyan" style={{ fontSize: '0.65rem' }}>
+                    {is1amAvailable ? 'Detected' : 'Connect'}
+                  </span>
+                </button>
+
+                {/* 2. Lace Wallet Extension */}
+                <button
+                  className="btn btn-secondary btn-sm"
+                  onClick={() => {
+                    setShowMenu(false);
+                    connect('lace');
+                  }}
+                  style={{ justifyContent: 'space-between', padding: '0.65rem 0.85rem' }}
                 >
                   <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                     <span>🦊</span>
-                    <span>{detectedExtensionName || 'Midnight Extension (Lace)'}</span>
+                    <span>Lace Wallet (Midnight)</span>
                   </span>
                   <span className="badge badge-purple" style={{ fontSize: '0.65rem' }}>
-                    {isExtensionAvailable ? 'Detected' : 'Auto'}
+                    {isLaceAvailable ? 'Detected' : 'Connect'}
                   </span>
                 </button>
 
-                {/* 2. Instant Demo Wallet */}
+                {/* 3. Instant Demo Wallet */}
                 <button
                   className="btn btn-secondary btn-sm"
                   onClick={() => {
                     setShowMenu(false);
-                    connect('1am-web');
+                    connect('demo');
                   }}
-                  style={{ justifyContent: 'space-between', padding: '0.6rem 0.85rem' }}
+                  style={{ justifyContent: 'space-between', padding: '0.65rem 0.85rem' }}
                 >
                   <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                     <span>⚡</span>
-                    <span>Instant Demo Account</span>
+                    <span>Instant Demo Sandbox</span>
                   </span>
-                  <span className="badge badge-cyan" style={{ fontSize: '0.65rem' }}>
+                  <span className="badge badge-green" style={{ fontSize: '0.65rem' }}>
                     1-Click
                   </span>
                 </button>
-              </div>
-
-              {/* 3. Validated Custom Address Input */}
-              <div style={{ borderTop: '1px solid var(--border-subtle)', paddingTop: '0.8rem' }}>
-                <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', marginBottom: '0.4rem', fontWeight: 600 }}>
-                  PASTE VALID MIDNIGHT ADDRESS:
-                </div>
-                <div style={{ display: 'flex', gap: '0.4rem', marginBottom: '0.35rem' }}>
-                  <input
-                    type="text"
-                    className="input"
-                    placeholder="mn_addr_preview1..."
-                    value={customInput}
-                    onChange={(e) => setCustomInput(e.target.value)}
-                    style={{
-                      fontSize: '0.76rem',
-                      padding: '0.4rem 0.6rem',
-                      borderColor: customInput.length > 0 ? (isCustomValid ? 'var(--emerald)' : 'var(--rose)') : 'var(--border-subtle)',
-                    }}
-                  />
-                  <button
-                    className="btn btn-primary btn-sm"
-                    disabled={!isCustomValid}
-                    onClick={() => {
-                      if (isCustomValid) {
-                        setShowMenu(false);
-                        connect('custom', customInput.trim());
-                      }
-                    }}
-                  >
-                    Connect
-                  </button>
-                </div>
-
-                {/* Inline Validation Feedback */}
-                {customInput.length > 0 && !isCustomValid && (
-                  <div style={{ fontSize: '0.7rem', color: 'var(--rose)' }}>
-                    ⚠️ Must be a valid Midnight address (e.g. mn_addr_preview1...)
-                  </div>
-                )}
-                {isCustomValid && (
-                  <div style={{ fontSize: '0.7rem', color: 'var(--emerald-light)' }}>
-                    ✓ Valid Midnight address format
-                  </div>
-                )}
               </div>
             </div>
           )}
@@ -167,9 +127,10 @@ export function WalletConnect({ hook }: Props) {
         </button>
       )}
 
-      {/* ── Connected State: Account Badge ────────────────────────────────── */}
+      {/* ── Connected State: Account Badge with Live Balance ──────────────── */}
       {walletState.status === 'connected' && (
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+          {/* Live Balance Pill */}
           <div
             style={{
               padding: '0.35rem 0.75rem',
@@ -203,7 +164,7 @@ export function WalletConnect({ hook }: Props) {
                 position: 'absolute',
                 top: 'calc(100% + 8px)',
                 right: 0,
-                width: 280,
+                width: 300,
                 background: '#0d101d',
                 border: '1px solid var(--border-subtle)',
                 borderRadius: 'var(--radius-md)',
@@ -240,6 +201,29 @@ export function WalletConnect({ hook }: Props) {
                     {copied ? '✓' : 'Copy'}
                   </button>
                 </div>
+              </div>
+
+              {/* Demo Top Up Button OR Faucet Link */}
+              <div style={{ marginBottom: '0.85rem' }}>
+                {walletState.walletType === 'demo' ? (
+                  <button
+                    className="btn btn-secondary btn-sm"
+                    onClick={topUpDemoBalance}
+                    style={{ width: '100%', justifyContent: 'center', fontSize: '0.76rem' }}
+                  >
+                    ⚡ Top Up Demo Balance (5,000 tNIGHT)
+                  </button>
+                ) : (
+                  <a
+                    href="https://midnight-tmnight-preview.nethermind.dev/"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="btn btn-secondary btn-sm"
+                    style={{ width: '100%', justifyContent: 'center', fontSize: '0.76rem', textDecoration: 'none' }}
+                  >
+                    🚰 Get Free Test Tokens (Faucet ↗)
+                  </a>
+                )}
               </div>
 
               <button
