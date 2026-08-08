@@ -782,7 +782,21 @@ function VerifierView({
     setIsVerifying(true);
 
     try {
-      await new Promise((r) => setTimeout(r, 1000));
+      if (testFile) {
+        const buffer = await testFile.arrayBuffer();
+        const hashBuf = await crypto.subtle.digest('SHA-256', buffer);
+        const hashHex = Array.from(new Uint8Array(hashBuf))
+          .map((b) => b.toString(16).padStart(2, '0'))
+          .join('');
+
+        if (hashHex.toLowerCase() !== activeListing.dataCommitment.toLowerCase()) {
+          setResult({ matched: false });
+          setIsVerifying(false);
+          return;
+        }
+      }
+
+      await new Promise((r) => setTimeout(r, 800));
       let tx = '0x' + activeListing.dataCommitment.slice(0, 32) + '...verified';
       if (walletApi && typeof walletApi.callContract === 'function') {
         const res = await walletApi.callContract({
