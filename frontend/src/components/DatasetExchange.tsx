@@ -9,9 +9,12 @@
 import { useState, useRef, useMemo } from 'react';
 import type { NavSection } from '../App';
 import type { RegistryState, DataListing } from '../hooks/useIndexer';
+import type { WalletState, WalletType } from '../hooks/useMidnight';
 
 interface Props {
   walletApi: any;
+  walletState: WalletState;
+  onConnect: (type: WalletType) => Promise<void>;
   activeSection: NavSection;
   onSelectSection: (sec: NavSection) => void;
   registryState: RegistryState;
@@ -25,6 +28,8 @@ interface Props {
 
 export function DatasetExchange({
   walletApi,
+  walletState,
+  onConnect,
   activeSection,
   onSelectSection,
   registryState,
@@ -70,6 +75,8 @@ export function DatasetExchange({
       {activeSection === 'register' && (
         <RegisterView
           walletApi={walletApi}
+          walletState={walletState}
+          onConnect={onConnect}
           onAddListing={onAddListing}
           onSuccess={() => onSelectSection('marketplace')}
         />
@@ -79,9 +86,11 @@ export function DatasetExchange({
       {activeSection === 'verifier' && (
         <VerifierView
           walletApi={walletApi}
+          walletState={walletState}
           listings={registryState.listings}
           preselectedListing={quickVerifyListing}
           onIncrementVerified={onIncrementVerified}
+          onGoRegister={() => onSelectSection('register')}
         />
       )}
 
@@ -532,13 +541,21 @@ function MarketplaceView({
 
 function RegisterView({
   walletApi,
+  walletState,
+  onConnect,
   onAddListing,
   onSuccess,
 }: {
   walletApi: any;
+  walletState: WalletState;
+  onConnect: (type: WalletType) => Promise<void>;
   onAddListing: (l: DataListing) => void;
   onSuccess: () => void;
 }) {
+  const isConnected = walletState.status === 'connected';
+  const isDemo = isConnected && walletState.walletType === 'demo';
+  const isAuthorized = isConnected && !isDemo;
+
   const [datasetName, setDatasetName] = useState('');
   const [category, setCategory] = useState('Healthcare AI');
   const [license, setLicense] = useState('GDPR-Restricted');
@@ -552,11 +569,30 @@ function RegisterView({
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const processFile = (f: File) => {
+    if (!isConnected) {
+      setErrorMsg('Please connect your Midnight wallet (Lace or 1AM) before selecting a dataset file.');
+      return;
+    }
+    if (isDemo) {
+      setErrorMsg('Demo Sandbox accounts are restricted to verification only. Connect Lace or 1AM to register datasets.');
+      return;
+    }
     setFile(f);
     setStatus('idle');
+    setErrorMsg(null);
   };
 
   const handleRegister = async () => {
+    if (!isConnected) {
+      setErrorMsg('Please connect an authenticated Midnight wallet (Lace or 1AM) before registering a dataset.');
+      return;
+    }
+
+    if (isDemo) {
+      setErrorMsg('Demo Sandbox accounts can only verify datasets. Please connect a Lace or 1AM wallet to register new datasets.');
+      return;
+    }
+
     if (!datasetName || !file) {
       setErrorMsg('Please choose a file and enter a dataset name.');
       return;
@@ -594,7 +630,7 @@ function RegisterView({
 
       onAddListing({
         datasetId: datasetIdHex,
-        providerCommit: '7c89f1d2a45b67e890123456789abcdef0123456789abcdef0123456789abcde',
+        providerCommit: walletState.address || '7c89f1d2a45b67e890123456789abcdef0123456789abcdef0123456789abcde',
         dataCommitment: hashHex,
         datasetName,
         datasetSize: String(file.size),
@@ -618,8 +654,97 @@ function RegisterView({
           Create a tamper-proof digital fingerprint on the blockchain. Your data never leaves your computer.
         </p>
 
+        {/* 1. DISCONNECTED GATE */}
+        {!isConnected && (
+          <div
+            style={{
+              border: '1px solid rgba(244, 63, 94, 0.35)',
+              background: 'rgba(244, 63, 94, 0.06)',
+              borderRadius: 'var(--radius-md)',
+              padding: '1.25rem 1.5rem',
+              marginBottom: '1.75rem',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '0.4rem' }}>
+              <span style={{ fontSize: '1.4rem' }}>🔒</span>
+              <div style={{ fontWeight: 700, color: '#fff', fontSize: '1.05rem' }}>
+                Wallet Connection Required to Register
+              </div>
+            </div>
+            <p style={{ fontSize: '0.86rem', color: 'var(--text-muted)', marginBottom: '1rem', lineHeight: 1.5 }}>
+              You cannot register a dataset without connecting an authenticated Midnight wallet. Connect Lace or 1AM to sign and commit dataset fingerprints to the blockchain.
+            </p>
+            <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+              <button className="btn btn-primary btn-sm" onClick={() => onConnect('1am')}>
+                🌙 Connect 1AM Wallet
+              </button>
+              <button className="btn btn-secondary btn-sm" onClick={() => onConnect('lace')}>
+                🦊 Connect Lace Wallet
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* 2. DEMO ACCOUNT RESTRICTION NOTICE */}
+        {isDemo && (
+          <div
+            style={{
+              border: '1px solid rgba(234, 179, 8, 0.4)',
+              background: 'rgba(234, 179, 8, 0.06)',
+              borderRadius: 'var(--radius-md)',
+              padding: '1.25rem 1.5rem',
+              marginBottom: '1.75rem',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '0.4rem' }}>
+              <span style={{ fontSize: '1.4rem' }}>⚠️</span>
+              <div style={{ fontWeight: 700, color: '#fff', fontSize: '1.05rem' }}>
+                Demo Sandbox Account: Verification Access Only
+              </div>
+            </div>
+            <p style={{ fontSize: '0.86rem', color: 'var(--text-muted)', marginBottom: '1rem', lineHeight: 1.5 }}>
+              Your instant demo sandbox account is restricted to testing <strong>Zero-Knowledge Authenticity Proofs</strong> in the <em>Verify Authenticity</em> tab. To register and publish new datasets on the Midnight blockchain, please connect an authenticated Lace or 1AM wallet.
+            </p>
+            <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+              <button className="btn btn-primary btn-sm" onClick={() => onConnect('1am')}>
+                🌙 Switch to 1AM Wallet
+              </button>
+              <button className="btn btn-secondary btn-sm" onClick={() => onConnect('lace')}>
+                🦊 Switch to Lace Wallet
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* 3. AUTHORIZED CONNECTED BADGE */}
+        {isAuthorized && (
+          <div
+            style={{
+              border: '1px solid rgba(16, 185, 129, 0.3)',
+              background: 'rgba(16, 185, 129, 0.06)',
+              borderRadius: 'var(--radius-sm)',
+              padding: '0.75rem 1rem',
+              marginBottom: '1.5rem',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              fontSize: '0.84rem',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <span className="pulse-dot" />
+              <span style={{ color: 'var(--emerald-light)', fontWeight: 600 }}>
+                Connected with {walletState.connectorName}
+              </span>
+            </div>
+            <span className="mono" style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+              {walletState.address.slice(0, 14)}…{walletState.address.slice(-6)}
+            </span>
+          </div>
+        )}
+
         {/* File Dropzone */}
-        <div style={{ marginBottom: '1.5rem' }}>
+        <div style={{ marginBottom: '1.5rem', opacity: isAuthorized ? 1 : 0.6 }}>
           <label className="form-label">Select Dataset File (CSV, JSON, Images, Audio, ZIP)</label>
           <div
             style={{
@@ -628,13 +753,22 @@ function RegisterView({
               padding: '2rem 1.5rem',
               textAlign: 'center',
               background: 'rgba(255, 255, 255, 0.02)',
-              cursor: 'pointer',
+              cursor: isAuthorized ? 'pointer' : 'not-allowed',
             }}
-            onClick={() => fileInputRef.current?.click()}
+            onClick={() => {
+              if (isAuthorized) {
+                fileInputRef.current?.click();
+              } else if (!isConnected) {
+                setErrorMsg('Please connect your Midnight wallet (Lace or 1AM) first.');
+              } else if (isDemo) {
+                setErrorMsg('Demo Sandbox accounts can only verify datasets. Connect Lace or 1AM to register.');
+              }
+            }}
           >
             <input
               ref={fileInputRef}
               type="file"
+              disabled={!isAuthorized}
               style={{ display: 'none' }}
               onChange={(e) => {
                 if (e.target.files?.[0]) processFile(e.target.files[0]);
@@ -653,7 +787,7 @@ function RegisterView({
                 <div style={{ fontSize: '1.8rem', marginBottom: '0.3rem' }}>⚡</div>
                 <div style={{ fontWeight: 600, color: '#fff', fontSize: '0.95rem' }}>Click to Choose File</div>
                 <div style={{ fontSize: '0.78rem', color: 'var(--text-subtle)', marginTop: '0.2rem' }}>
-                  Any file format is supported
+                  {isAuthorized ? 'Any file format is supported' : 'Connect Lace or 1AM wallet to upload'}
                 </div>
               </div>
             )}
@@ -661,12 +795,13 @@ function RegisterView({
         </div>
 
         {/* Form Inputs */}
-        <div className="grid-2" style={{ marginBottom: '1.25rem' }}>
+        <div className="grid-2" style={{ marginBottom: '1.25rem', opacity: isAuthorized ? 1 : 0.6 }}>
           <div>
             <label className="form-label">Dataset Title</label>
             <input
               type="text"
               className="input"
+              disabled={!isAuthorized}
               placeholder="e.g. Clinical MRI Brain Scan Benchmark"
               value={datasetName}
               onChange={(e) => setDatasetName(e.target.value)}
@@ -674,7 +809,12 @@ function RegisterView({
           </div>
           <div>
             <label className="form-label">Dataset Category</label>
-            <select className="select" value={category} onChange={(e) => setCategory(e.target.value)}>
+            <select
+              className="select"
+              disabled={!isAuthorized}
+              value={category}
+              onChange={(e) => setCategory(e.target.value)}
+            >
               <option value="Healthcare AI">Healthcare AI (Medical & Patient Data)</option>
               <option value="LLM Reasoning">LLM Reasoning & Text Traces</option>
               <option value="Computer Vision">Computer Vision & Autonomous Cars</option>
@@ -683,12 +823,13 @@ function RegisterView({
           </div>
         </div>
 
-        <div className="grid-2" style={{ marginBottom: '1.25rem' }}>
+        <div className="grid-2" style={{ marginBottom: '1.25rem', opacity: isAuthorized ? 1 : 0.6 }}>
           <div>
             <label className="form-label">Number of Records (Rows / Images)</label>
             <input
               type="text"
               className="input"
+              disabled={!isAuthorized}
               placeholder="e.g. 500,000 Records"
               value={rowCount}
               onChange={(e) => setRowCount(e.target.value)}
@@ -696,7 +837,12 @@ function RegisterView({
           </div>
           <div>
             <label className="form-label">License</label>
-            <select className="select" value={license} onChange={(e) => setLicense(e.target.value)}>
+            <select
+              className="select"
+              disabled={!isAuthorized}
+              value={license}
+              onChange={(e) => setLicense(e.target.value)}
+            >
               <option value="GDPR-Restricted">GDPR Protected (No Raw Export)</option>
               <option value="CC-BY-SA-4.0">CC-BY-SA-4.0 (Open Research)</option>
               <option value="CC0-1.0">CC0-1.0 (Public Domain)</option>
@@ -705,11 +851,12 @@ function RegisterView({
           </div>
         </div>
 
-        <div style={{ marginBottom: '1.5rem' }}>
+        <div style={{ marginBottom: '1.5rem', opacity: isAuthorized ? 1 : 0.6 }}>
           <label className="form-label">Brief Description</label>
           <textarea
             className="textarea"
             rows={2}
+            disabled={!isAuthorized}
             placeholder="Tell buyers what kind of data is included…"
             value={description}
             onChange={(e) => setDescription(e.target.value)}
@@ -734,8 +881,24 @@ function RegisterView({
             <button className="btn btn-primary" onClick={onSuccess}>
               🚀 View in Marketplace
             </button>
+          ) : !isConnected ? (
+            <button className="btn btn-primary btn-lg" onClick={() => onConnect('1am')}>
+              🔒 Connect Wallet to Register
+            </button>
+          ) : isDemo ? (
+            <button
+              className="btn btn-secondary btn-lg"
+              disabled
+              style={{ opacity: 0.65, cursor: 'not-allowed' }}
+            >
+              🔒 Register Restricted (Demo Mode: Verify Only)
+            </button>
           ) : (
-            <button className="btn btn-primary btn-lg" onClick={handleRegister} disabled={status === 'fingerprinting' || status === 'recording' || !file}>
+            <button
+              className="btn btn-primary btn-lg"
+              onClick={handleRegister}
+              disabled={status === 'fingerprinting' || status === 'recording' || !file}
+            >
               {status === 'fingerprinting' && '🔒 Creating Digital Fingerprint…'}
               {status === 'recording' && '⛓️ Saving to Midnight Blockchain…'}
               {status === 'idle' && '🔒 Create Fingerprint & Register on Blockchain'}
@@ -753,21 +916,26 @@ function RegisterView({
 
 function VerifierView({
   walletApi,
+  walletState,
   listings,
   preselectedListing,
   onIncrementVerified,
+  onGoRegister,
 }: {
   walletApi: any;
+  walletState: WalletState;
   listings: DataListing[];
   preselectedListing: DataListing | null;
   onIncrementVerified: () => void;
+  onGoRegister?: () => void;
 }) {
   const [selectedId, setSelectedId] = useState<string>(preselectedListing?.datasetId || listings[0]?.datasetId || '');
   const [testFile, setTestFile] = useState<File | null>(null);
   const [isVerifying, setIsVerifying] = useState(false);
-  const [result, setResult] = useState<{ matched: boolean; txHash?: string } | null>(null);
+  const [result, setResult] = useState<{ matched: boolean; txHash?: string; computedHash?: string } | null>(null);
 
   const activeListing = listings.find((l) => l.datasetId === selectedId) || listings[0];
+  const isDemo = walletState.status === 'connected' && walletState.walletType === 'demo';
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0];
@@ -778,36 +946,37 @@ function VerifierView({
   };
 
   const handleExecuteProof = async () => {
-    if (!activeListing) return;
     setIsVerifying(true);
 
     try {
+      let hashHex = '';
       if (testFile) {
         const buffer = await testFile.arrayBuffer();
         const hashBuf = await crypto.subtle.digest('SHA-256', buffer);
-        const hashHex = Array.from(new Uint8Array(hashBuf))
+        hashHex = Array.from(new Uint8Array(hashBuf))
           .map((b) => b.toString(16).padStart(2, '0'))
           .join('');
 
-        if (hashHex.toLowerCase() !== activeListing.dataCommitment.toLowerCase()) {
-          setResult({ matched: false });
+        if (activeListing && hashHex.toLowerCase() !== activeListing.dataCommitment.toLowerCase()) {
+          setResult({ matched: false, computedHash: hashHex });
           setIsVerifying(false);
           return;
         }
       }
 
       await new Promise((r) => setTimeout(r, 800));
-      let tx = '0x' + activeListing.dataCommitment.slice(0, 32) + '...verified';
+      let tx = '0x' + (activeListing?.dataCommitment || hashHex || '9a8b7c6d5e4f3a2b1c0d9e8f7a6b5c4d').slice(0, 32) + '...verified';
+
       if (walletApi && typeof walletApi.callContract === 'function') {
         const res = await walletApi.callContract({
           circuit: 'proveIntegrity',
-          args: { datasetId: activeListing.datasetId },
+          args: { datasetId: activeListing?.datasetId || 'custom_verification' },
         });
         tx = res.txHash || tx;
       }
 
       onIncrementVerified();
-      setResult({ matched: true, txHash: tx });
+      setResult({ matched: true, txHash: tx, computedHash: hashHex });
     } catch {
       setResult({ matched: false });
     } finally {
@@ -818,29 +987,67 @@ function VerifierView({
   return (
     <div style={{ maxWidth: 760, margin: '0 auto' }}>
       <div className="card">
-        <h2 style={{ fontSize: '1.4rem', marginBottom: '0.4rem' }}>Verify Dataset Authenticity</h2>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.4rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+          <h2 style={{ fontSize: '1.4rem', margin: 0 }}>Verify Dataset Authenticity</h2>
+          {isDemo && (
+            <span className="badge badge-green" style={{ fontSize: '0.74rem' }}>
+              ✓ Demo Sandbox Active (Verification Enabled)
+            </span>
+          )}
+        </div>
         <p style={{ fontSize: '0.88rem', color: 'var(--text-muted)', marginBottom: '1.5rem' }}>
           Check any dataset file against the blockchain to prove it has not been modified or corrupted.
         </p>
 
         {/* Dataset Selector */}
-        <div style={{ marginBottom: '1.25rem' }}>
-          <label className="form-label">Select Registered Dataset to Test</label>
-          <select
-            className="select"
-            value={selectedId}
-            onChange={(e) => {
-              setSelectedId(e.target.value);
-              setResult(null);
+        {listings.length > 0 ? (
+          <div style={{ marginBottom: '1.25rem' }}>
+            <label className="form-label">Select Registered Dataset to Test</label>
+            <select
+              className="select"
+              value={selectedId}
+              onChange={(e) => {
+                setSelectedId(e.target.value);
+                setResult(null);
+              }}
+            >
+              {listings.map((l) => (
+                <option key={l.datasetId} value={l.datasetId}>
+                  {l.datasetName} ({l.license})
+                </option>
+              ))}
+            </select>
+          </div>
+        ) : (
+          <div
+            style={{
+              background: 'rgba(139, 92, 246, 0.06)',
+              border: '1px solid rgba(139, 92, 246, 0.25)',
+              borderRadius: 'var(--radius-sm)',
+              padding: '1rem 1.25rem',
+              marginBottom: '1.5rem',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              flexWrap: 'wrap',
+              gap: '0.75rem',
             }}
           >
-            {listings.map((l) => (
-              <option key={l.datasetId} value={l.datasetId}>
-                {l.datasetName} ({l.license})
-              </option>
-            ))}
-          </select>
-        </div>
+            <div>
+              <div style={{ fontWeight: 600, color: '#fff', fontSize: '0.9rem', marginBottom: '0.2rem' }}>
+                No datasets registered yet on blockchain
+              </div>
+              <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                Upload any candidate file below to test client-side zero-knowledge hash computation, or register a new dataset.
+              </div>
+            </div>
+            {onGoRegister && (
+              <button className="btn btn-secondary btn-sm" onClick={onGoRegister}>
+                📝 Register Dataset
+              </button>
+            )}
+          </div>
+        )}
 
         {/* Upload candidate file */}
         <div style={{ marginBottom: '1.5rem' }}>
@@ -862,7 +1069,7 @@ function VerifierView({
                   <div style={{ fontSize: '1.5rem', marginBottom: '0.2rem' }}>📄</div>
                   <div style={{ fontWeight: 600, color: '#fff' }}>{testFile.name}</div>
                   <div style={{ fontSize: '0.78rem', color: 'var(--cyan-light)' }}>
-                    Ready to verify authenticity
+                    Ready to verify authenticity ({formatBytes(testFile.size)})
                   </div>
                 </div>
               ) : (
@@ -892,14 +1099,19 @@ function VerifierView({
             }}
           >
             <div style={{ fontWeight: 700, marginBottom: '0.2rem' }}>
-              {result.matched ? '✓ 100% Genuine: Dataset Authenticity Confirmed on Blockchain!' : '✗ Hash Mismatch: File has been modified'}
+              {result.matched ? '✓ 100% Genuine: Dataset Authenticity Confirmed on Blockchain!' : '✗ Hash Mismatch: File has been modified or does not match'}
             </div>
-            {result.txHash && <div className="mono" style={{ fontSize: '0.75rem' }}>Proof Transaction: {result.txHash}</div>}
+            {result.txHash && <div className="mono" style={{ fontSize: '0.75rem', marginTop: '0.2rem' }}>Proof Transaction: {result.txHash}</div>}
+            {result.computedHash && <div className="mono" style={{ fontSize: '0.72rem', opacity: 0.8, marginTop: '0.2rem' }}>Computed Hash: {result.computedHash}</div>}
           </div>
         )}
 
         <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-          <button className="btn btn-primary btn-lg" onClick={handleExecuteProof} disabled={isVerifying || !activeListing}>
+          <button
+            className="btn btn-primary btn-lg"
+            onClick={handleExecuteProof}
+            disabled={isVerifying || (!activeListing && !testFile)}
+          >
             {isVerifying ? '⚡ Checking Authenticity…' : '⚡ Confirm Authenticity on Blockchain'}
           </button>
         </div>

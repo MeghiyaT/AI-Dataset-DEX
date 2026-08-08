@@ -117,6 +117,8 @@ function App() {
       <main className="container" style={{ padding: '2.5rem 1.5rem 4rem', flex: 1 }}>
         <DatasetExchange
           walletApi={walletApi}
+          walletState={midnightHook.walletState}
+          onConnect={midnightHook.connect}
           activeSection={activeSection}
           onSelectSection={(sec) => setActiveSection(sec)}
           registryState={indexer.state}
