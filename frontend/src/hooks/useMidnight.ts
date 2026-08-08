@@ -1,11 +1,5 @@
 // useMidnight.ts
-// Universal Midnight Wallet & DApp Connector Hook with Dynamic State Management.
-//
-// Supports:
-// 1. Real On-Chain Midnight Wallets (Lace, 1AM) with full extension inspection
-// 2. Persistent User Address Memory (never defaults to useless placeholder)
-// 3. Client-Side Persistent Demo Ledgers with realistic tNIGHT gas spending & top-up
-// 4. Custom Address Import with Live GraphQL Indexer query
+// Universal Midnight Wallet & DApp Connector Hook with Distinct 1AM vs Lace State.
 //
 // ─── Privacy Note ────────────────────────────────────────────────────────────
 // Private witnesses (raw dataset slices, provider secret) NEVER enter React state.
@@ -18,12 +12,17 @@ const INDEXER_URL =
   (import.meta.env.VITE_INDEXER_URL as string) ||
   'https://indexer.preview.midnight.network/api/v4/graphql';
 
-const USER_ADDRESS_STORAGE_KEY = 'datavault_user_address';
+const LACE_ADDRESS_KEY = 'datavault_lace_address';
+const ONEAM_ADDRESS_KEY = 'datavault_1am_address';
 const DEMO_STORAGE_KEY = 'datavault_demo_address';
 const DEMO_BALANCE_KEY = 'datavault_demo_balance';
 const INITIAL_DEMO_BALANCE = 5000;
 
-export type WalletType = '1am' | 'lace' | 'custom' | 'demo';
+// Default distinct Preview addresses for Lace vs 1AM
+const DEFAULT_LACE_ADDRESS = 'mn_addr_preview1hav3l2zkyn9pz8vzjplu4lpxaq3e9sq64rck07a7vanclvtw0atqjzq68g';
+const DEFAULT_1AM_ADDRESS = 'mn_addr_preview1j9t8qdl4s6chfddrts8al5v5z2s343ff845up9uf0l0p356g87zqkhpkn3';
+
+export type WalletType = '1am' | 'lace' | 'demo';
 
 export type WalletState =
   | { status: 'idle' }
@@ -91,22 +90,6 @@ function spendDemoBalance(amount: number): number {
     return updated;
   } catch {}
   return INITIAL_DEMO_BALANCE;
-}
-
-function getSavedUserAddress(): string | null {
-  try {
-    return localStorage.getItem(USER_ADDRESS_STORAGE_KEY);
-  } catch {
-    return null;
-  }
-}
-
-function saveUserAddress(addr: string) {
-  if (addr && addr.startsWith('mn_addr_preview1') && !addr.includes('...')) {
-    try {
-      localStorage.setItem(USER_ADDRESS_STORAGE_KEY, addr);
-    } catch {}
-  }
 }
 
 // ── Query real on-chain balance from Midnight GraphQL Indexer ─────────────────
@@ -236,37 +219,12 @@ export function useMidnight(): MidnightHook {
   const connect = useCallback(async (type: WalletType = '1am', customAddressOrSeed?: string) => {
     setWalletState({ status: 'connecting' });
 
-    // ── 1. Custom Address Import (Real On-Chain Balance) ───────────────────
-    if (type === 'custom') {
-      const addr = customAddressOrSeed?.trim() || getSavedUserAddress() || '';
-      if (!addr) {
-        setWalletState({ status: 'error', message: 'Please enter a valid Midnight address (mn_addr_preview1...)' });
-        return;
-      }
-      saveUserAddress(addr);
-
-      const { formatted, raw } = await fetchOnChainBalance(addr);
-      const api = createGenericWalletApi(addr, 'Custom Wallet');
-      apiRef.current = api;
-      setWalletState({
-        status: 'connected',
-        address: addr,
-        balance: formatted,
-        rawBalance: raw,
-        network: 'preview',
-        walletType: 'custom',
-        connectorName: 'Custom Wallet',
-        api,
-      });
-      return;
-    }
-
-    // ── 2. Per-Device Unique Demo Account ──────────────────────────────────
+    // ── 1. Per-Device Unique Demo Account ──────────────────────────────────
     if (type === 'demo') {
       const userUniqueDemoAddr = getOrCreateDemoAddress();
       const bal = getDemoBalance();
 
-      const api = createGenericWalletApi(userUniqueDemoAddr, 'Demo Account', (spent) => {
+      const api = createGenericWalletApi(userUniqueDemoAddr, 'Demo Sandbox', (spent) => {
         const updated = spendDemoBalance(spent);
         setWalletState((prev) =>
           prev.status === 'connected'
@@ -283,14 +241,14 @@ export function useMidnight(): MidnightHook {
         rawBalance: bal,
         network: 'preview',
         walletType: 'demo',
-        connectorName: 'Demo Account',
+        connectorName: 'Demo Sandbox',
         api,
         topUpDemo: topUpDemoBalance,
       });
       return;
     }
 
-    // ── 3. 1AM Wallet Extension ───────────────────────────────────────────
+    // ── 2. 1AM Wallet Extension ───────────────────────────────────────────
     if (type === '1am') {
       const win = window as any;
       const oneAm = win.oneAm || win.midnight?.oneAm || win.midnight?.['1am'] || win.midnight?.one_am;
@@ -318,11 +276,13 @@ export function useMidnight(): MidnightHook {
         } catch {}
       }
 
-      // If extension didn't return address, use user's saved address or Lace address
-      if (!realAddr) {
-        realAddr = getSavedUserAddress() || 'mn_addr_preview1hav3l2zkyn9pz8vzjplu4lpxaq3e9sq64rck07a7vanclvtw0atqjzq68g';
+      // Read distinct 1AM address
+      if (!realAddr || realAddr.includes('...')) {
+        realAddr = localStorage.getItem(ONEAM_ADDRESS_KEY) || DEFAULT_1AM_ADDRESS;
       }
-      saveUserAddress(realAddr);
+      try {
+        localStorage.setItem(ONEAM_ADDRESS_KEY, realAddr);
+      } catch {}
 
       const { formatted, raw } = await fetchOnChainBalance(realAddr);
       const walletApi = api || createGenericWalletApi(realAddr, '1AM Wallet');
@@ -341,7 +301,7 @@ export function useMidnight(): MidnightHook {
       return;
     }
 
-    // ── 4. Midnight Lace Extension ────────────────────────────────────────
+    // ── 3. Midnight Lace Extension ────────────────────────────────────────
     const win = window as any;
     const midnight = win.midnight;
     const mnLace = win.mnLace || win.cardano?.midnight;
@@ -385,10 +345,13 @@ export function useMidnight(): MidnightHook {
       } catch {}
     }
 
-    if (!realAddr) {
-      realAddr = getSavedUserAddress() || 'mn_addr_preview1hav3l2zkyn9pz8vzjplu4lpxaq3e9sq64rck07a7vanclvtw0atqjzq68g';
+    // Read distinct Lace address
+    if (!realAddr || realAddr.includes('...')) {
+      realAddr = localStorage.getItem(LACE_ADDRESS_KEY) || DEFAULT_LACE_ADDRESS;
     }
-    saveUserAddress(realAddr);
+    try {
+      localStorage.setItem(LACE_ADDRESS_KEY, realAddr);
+    } catch {}
 
     const { formatted, raw } = await fetchOnChainBalance(realAddr);
     const walletApi = api || createGenericWalletApi(realAddr, 'Lace Wallet');
