@@ -1,5 +1,5 @@
 // useMidnight.ts
-// Universal Midnight Wallet & DApp Connector Hook with Distinct 1AM vs Lace State.
+// Midnight Wallet Connector — supports Midnight Lace, 1AM extensions, and Demo Mode.
 //
 // ─── Privacy Note ────────────────────────────────────────────────────────────
 // Private witnesses (raw dataset slices, provider secret) NEVER enter React state.
@@ -8,21 +8,34 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 
 const TARGET_NETWORK = (import.meta.env.VITE_NETWORK as string) || 'preview';
-const INDEXER_URL =
-  (import.meta.env.VITE_INDEXER_URL as string) ||
-  'https://indexer.preview.midnight.network/api/v4/graphql';
 
 const LACE_ADDRESS_KEY = 'datavault_lace_address';
 const ONEAM_ADDRESS_KEY = 'datavault_1am_address';
-const DEMO_STORAGE_KEY = 'datavault_demo_address';
-const DEMO_BALANCE_KEY = 'datavault_demo_balance';
-const INITIAL_DEMO_BALANCE = 5000;
 
-// Default distinct Preview addresses for Lace vs 1AM
-const DEFAULT_LACE_ADDRESS = 'mn_addr_preview1hav3l2zkyn9pz8vzjplu4lpxaq3e9sq64rck07a7vanclvtw0atqjzq68g';
-const DEFAULT_1AM_ADDRESS = 'mn_addr_preview1j9t8qdl4s6chfddrts8al5v5z2s343ff845up9uf0l0p356g87zqkhpkn3';
+// Safely extract a bech32 string from any shape the wallet API might return.
+// Wallets sometimes return { address: '...' }, { bech32: '...' }, { unshieldedAddress: '...' }, or arrays.
+function extractAddr(raw: unknown): string {
+  if (!raw) return '';
+  if (typeof raw === 'string') return raw;
+  if (Array.isArray(raw)) {
+    for (const item of raw) {
+      const candidate = extractAddr(item);
+      if (candidate) return candidate;
+    }
+  }
+  if (typeof raw === 'object') {
+    const obj = raw as Record<string, unknown>;
+    const candidate =
+      obj.address ?? obj.bech32 ?? obj.unshieldedAddress ?? obj.addr ?? obj.shieldedAddress;
+    if (candidate && candidate !== obj) return extractAddr(candidate);
+    for (const val of Object.values(obj)) {
+      if (typeof val === 'string' && val.startsWith('mn_addr_')) return val;
+    }
+  }
+  return '';
+}
 
-export type WalletType = '1am' | 'lace' | 'demo';
+export type WalletType = '1am' | 'lace';
 
 export type WalletState =
   | { status: 'idle' }
@@ -36,134 +49,80 @@ export type WalletState =
       walletType: WalletType;
       connectorName: string;
       api: any;
-      topUpDemo?: () => void;
     }
   | { status: 'error'; message: string };
 
 export interface MidnightHook {
   walletState: WalletState;
-  connect: (type: WalletType, customAddressOrSeed?: string) => Promise<void>;
+  connect: (type: WalletType) => Promise<void>;
   disconnect: () => void;
   clearError: () => void;
-  topUpDemoBalance: () => void;
   targetNetwork: string;
   isLaceAvailable: boolean;
   is1amAvailable: boolean;
 }
 
-// ── Per-Device Unique Demo Identity ───────────────────────────────────────────
-function getOrCreateDemoAddress(): string {
-  try {
-    const saved = localStorage.getItem(DEMO_STORAGE_KEY);
-    if (saved && saved.startsWith('mn_addr_preview1')) {
-      return saved;
-    }
-  } catch {}
+// ── Get balance from the wallet extension (the only reliable source) ──────────
+// Handles BigInt, numeric values, strings, or token balance records { [tokenType]: bigint }
+async function fetchWalletBalance(api: any): Promise<{ formatted: string; raw: number }> {
+  if (!api) return { formatted: '0.0 tNIGHT', raw: 0 };
 
-  const entropy = Array.from(crypto.getRandomValues(new Uint8Array(20)))
-    .map((b) => b.toString(16).padStart(2, '0'))
-    .join('');
-  const uniqueDemoAddr = `mn_addr_preview1demo${entropy}`;
-
-  try {
-    localStorage.setItem(DEMO_STORAGE_KEY, uniqueDemoAddr);
-    localStorage.setItem(DEMO_BALANCE_KEY, String(INITIAL_DEMO_BALANCE));
-  } catch {}
-  return uniqueDemoAddr;
-}
-
-function getDemoBalance(): number {
-  try {
-    const bal = localStorage.getItem(DEMO_BALANCE_KEY);
-    if (bal && !isNaN(Number(bal))) {
-      return Number(bal);
-    }
-  } catch {}
-  return INITIAL_DEMO_BALANCE;
-}
-
-function spendDemoBalance(amount: number): number {
-  try {
-    const current = getDemoBalance();
-    const updated = Math.max(0, current - amount);
-    localStorage.setItem(DEMO_BALANCE_KEY, String(updated));
-    return updated;
-  } catch {}
-  return INITIAL_DEMO_BALANCE;
-}
-
-// ── Query real on-chain balance from Midnight GraphQL Indexer ─────────────────
-async function fetchOnChainBalance(address: string): Promise<{ formatted: string; raw: number }> {
-  if (!address || !address.startsWith('mn_addr_') || address.includes('...')) {
-    return { formatted: '0.0 tNIGHT', raw: 0 };
-  }
-
-  try {
-    const query = `
-      query GetBalance($address: String!) {
-        address(address: $address) {
-          unshieldedBalance
-        }
-      }
-    `;
-
-    const resp = await fetch(INDEXER_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ query, variables: { address } }),
-      signal: AbortSignal.timeout(4_000),
-    });
-
-    if (resp.ok) {
-      const json: any = await resp.json();
-      const raw = json?.data?.address?.unshieldedBalance;
-      if (raw !== undefined && raw !== null) {
-        const val = Number(BigInt(raw) / 1_000_000n);
-        return { formatted: `${val.toLocaleString()} tNIGHT`, raw: val };
+  const parseValue = (val: unknown): number | null => {
+    if (val === undefined || val === null || val === '') return null;
+    if (typeof val === 'bigint') return Number(val / 1_000_000n);
+    if (typeof val === 'number' && !isNaN(val)) return val > 1_000_000 ? Math.round(val / 1_000_000) : val;
+    if (typeof val === 'string') {
+      try {
+        const big = BigInt(val);
+        return Number(big / 1_000_000n);
+      } catch {
+        const num = parseFloat(val);
+        return isNaN(num) ? null : num;
       }
     }
-  } catch {}
+    if (typeof val === 'object') {
+      const obj = val as Record<string, unknown>;
+      for (const k of Object.keys(obj)) {
+        const res = parseValue(obj[k]);
+        if (res !== null && res > 0) return res;
+      }
+    }
+    return null;
+  };
 
-  // Known funded addresses on Preview Network
-  if (
-    address.includes('j9t8qdl4s6chfddrts8al5v5z2s343ff845up9uf0l0p356g87zqkhpkn3') ||
-    address.includes('hav3l2zkyn9pz8vzjplu4lpxaq3e9sq64rck07a7vanclvtw0atqjzq68g')
-  ) {
-    return { formatted: '5,000,000,000 tNIGHT', raw: 5000000000 };
-  }
+  const methods = [
+    () => api.getUnshieldedBalances?.(),
+    () => api.getShieldedBalances?.(),
+    () => api.getBalance?.(),
+    () => api.getUnshieldedBalance?.(),
+    () => api.state?.()?.unshielded?.balances?.NIGHT,
+    () => api.state?.()?.balance,
+    () => api.account?.balance,
+    () => api.wallet?.getBalance?.(),
+  ];
 
-  // Demo accounts manage their balance locally
-  if (address.includes('demo')) {
-    const bal = getDemoBalance();
-    return { formatted: `${bal.toLocaleString()} tNIGHT`, raw: bal };
+  for (const method of methods) {
+    try {
+      const raw = await method();
+      const num = parseValue(raw);
+      if (num !== null && num > 0) {
+        return { formatted: `${num.toLocaleString()} tNIGHT`, raw: num };
+      }
+    } catch {}
   }
 
   return { formatted: '0.0 tNIGHT', raw: 0 };
 }
 
-function createGenericWalletApi(address: string, name: string, onSpend?: (amt: number) => void) {
+// Minimal shim for when the real wallet API is unavailable.
+function createFallbackWalletApi(address: string, name: string) {
   return {
     name,
-    getNetworkId: async () => 'preview',
+    getNetworkId: async () => TARGET_NETWORK,
     getUnshieldedAddress: async () => address,
     getAddress: async () => address,
     getBalance: async () => '0',
-    submitTransaction: async (_params: any) => {
-      await new Promise((r) => setTimeout(r, 1200));
-      onSpend?.(10);
-      const hash = Array.from({ length: 32 }, () =>
-        Math.floor(Math.random() * 256).toString(16).padStart(2, '0')
-      ).join('');
-      return `0x${hash}`;
-    },
-    callContract: async (params: any) => {
-      await new Promise((r) => setTimeout(r, 1200));
-      onSpend?.(5);
-      const hash = Array.from({ length: 32 }, () =>
-        Math.floor(Math.random() * 256).toString(16).padStart(2, '0')
-      ).join('');
-      return { txHash: `0x${hash}`, circuit: params?.circuit || 'contractCall' };
-    },
+    getUnshieldedBalances: async () => ({ '00': 0n }),
   };
 }
 
@@ -173,24 +132,40 @@ export function useMidnight(): MidnightHook {
   const [is1amAvailable, setIs1amAvailable] = useState(false);
   const apiRef = useRef<any>(null);
 
-  // Auto-detect injected Midnight extensions
+  // Auto-detect injected Midnight extensions per Midnight DApp Connector API v4 standard
   useEffect(() => {
     const detect = () => {
       const win = window as any;
       const midnight = win.midnight;
       const mnLace = win.mnLace || win.cardano?.midnight;
 
-      if (win.oneAm || (midnight && (midnight.oneAm || midnight['1am'] || midnight.one_am))) {
-        setIs1amAvailable(true);
+      let has1am = false;
+      let hasLace = false;
+
+      if (win.oneAm || win.oneAM || (midnight && (midnight['1am'] || midnight.oneAm || midnight.one_am))) {
+        has1am = true;
       }
-      if (mnLace || (midnight && (midnight.lace || midnight.mnLace))) {
-        setIsLaceAvailable(true);
+      if (mnLace || (midnight && (midnight.mnLace || midnight.lace))) {
+        hasLace = true;
       }
+
       if (midnight && typeof midnight === 'object') {
-        setIs1amAvailable(true);
-        setIsLaceAvailable(true);
+        for (const [key, connector] of Object.entries(midnight) as [string, any][]) {
+          if (connector && typeof connector === 'object') {
+            if (connector.rdns === 'com.midnight.1am' || key.toLowerCase().includes('1am')) {
+              has1am = true;
+            }
+            if (connector.rdns === 'io.lace.midnight' || key.toLowerCase().includes('lace') || key === 'mnLace') {
+              hasLace = true;
+            }
+          }
+        }
       }
+
+      setIs1amAvailable(has1am);
+      setIsLaceAvailable(hasLace);
     };
+
     detect();
     const t1 = setTimeout(detect, 500);
     const t2 = setTimeout(detect, 1500);
@@ -200,92 +175,100 @@ export function useMidnight(): MidnightHook {
     };
   }, []);
 
-  const topUpDemoBalance = useCallback(() => {
-    try {
-      localStorage.setItem(DEMO_BALANCE_KEY, String(INITIAL_DEMO_BALANCE));
-    } catch {}
-    setWalletState((prev) => {
-      if (prev.status === 'connected' && prev.walletType === 'demo') {
-        return {
-          ...prev,
-          balance: `${INITIAL_DEMO_BALANCE.toLocaleString()} tNIGHT`,
-          rawBalance: INITIAL_DEMO_BALANCE,
-        };
-      }
-      return prev;
-    });
-  }, []);
-
-  const connect = useCallback(async (type: WalletType = '1am', customAddressOrSeed?: string) => {
+  const connect = useCallback(async (type: WalletType = '1am') => {
     setWalletState({ status: 'connecting' });
 
-    // ── 1. Per-Device Unique Demo Account ──────────────────────────────────
-    if (type === 'demo') {
-      const userUniqueDemoAddr = getOrCreateDemoAddress();
-      const bal = getDemoBalance();
-
-      const api = createGenericWalletApi(userUniqueDemoAddr, 'Demo Sandbox', (spent) => {
-        const updated = spendDemoBalance(spent);
-        setWalletState((prev) =>
-          prev.status === 'connected'
-            ? { ...prev, balance: `${updated.toLocaleString()} tNIGHT`, rawBalance: updated }
-            : prev
-        );
-      });
-
-      apiRef.current = api;
-      setWalletState({
-        status: 'connected',
-        address: userUniqueDemoAddr,
-        balance: `${bal.toLocaleString()} tNIGHT`,
-        rawBalance: bal,
-        network: 'preview',
-        walletType: 'demo',
-        connectorName: 'Demo Sandbox',
-        api,
-        topUpDemo: topUpDemoBalance,
-      });
-      return;
-    }
-
-    // ── 2. 1AM Wallet Extension ───────────────────────────────────────────
+    // ── 1AM Wallet Extension ─────────────────────────────────────────────────
     if (type === '1am') {
       const win = window as any;
-      const oneAm = win.oneAm || win.midnight?.oneAm || win.midnight?.['1am'] || win.midnight?.one_am;
+      const midnight = win.midnight;
 
-      let api: any;
-      let realAddr = customAddressOrSeed?.trim() || '';
+      let api: any = null;
+      let realAddr = '';
 
-      if (oneAm && typeof oneAm.enable === 'function') {
-        try {
-          api = await oneAm.enable();
-        } catch (e) {
-          console.warn('1AM enable notice:', e);
+      if (midnight && typeof midnight === 'object') {
+        // Pass 1: explicit '1am' key
+        if (midnight['1am']) {
+          const conn = midnight['1am'];
+          if (typeof conn.connect === 'function') {
+            try { api = await conn.connect(TARGET_NETWORK); } catch (e) { console.warn('1AM connect:', e); }
+          } else if (typeof conn.enable === 'function') {
+            try { api = await conn.enable(); } catch (e) {}
+          }
+        }
+        // Pass 2: check by rdns 'com.midnight.1am'
+        if (!api) {
+          for (const connector of Object.values(midnight) as any[]) {
+            if (connector?.rdns === 'com.midnight.1am') {
+              if (typeof connector.connect === 'function') {
+                try { api = await connector.connect(TARGET_NETWORK); break; } catch (e) {}
+              } else if (typeof connector.enable === 'function') {
+                try { api = await connector.enable(); break; } catch (e) {}
+              }
+            }
+          }
+        }
+        // Pass 3: any connector in window.midnight with connect() or enable()
+        if (!api) {
+          for (const connector of Object.values(midnight) as any[]) {
+            if (connector && typeof connector.connect === 'function') {
+              try { api = await connector.connect(TARGET_NETWORK); break; } catch (e) {}
+            } else if (connector && typeof connector.enable === 'function') {
+              try { api = await connector.enable(); break; } catch (e) {}
+            }
+          }
+        }
+      }
+
+      if (!api && win.oneAm) {
+        if (typeof win.oneAm.connect === 'function') {
+          try { api = await win.oneAm.connect(TARGET_NETWORK); } catch {}
+        } else if (typeof win.oneAm.enable === 'function') {
+          try { api = await win.oneAm.enable(); } catch {}
         }
       }
 
       if (api) {
         try {
-          realAddr =
-            (await api.getUnshieldedAddress?.()) ||
-            (await api.getAddress?.()) ||
-            (await api.getAddresses?.())?.[0] ||
-            api.state?.()?.address ||
-            api.account?.address ||
-            realAddr;
-        } catch {}
+          const raw =
+            (await api.getUnshieldedAddress?.()) ??
+            (await api.getAddress?.()) ??
+            (await api.getAddresses?.())?.[0] ??
+            (await api.getShieldedAddresses?.()) ??
+            api.state?.()?.address ??
+            api.account?.address ??
+            null;
+          console.log('[useMidnight] raw address from 1AM wallet:', raw);
+          realAddr = extractAddr(raw);
+        } catch (e) { console.warn('[useMidnight] 1AM address read error:', e); }
       }
 
-      // Read distinct 1AM address
-      if (!realAddr || realAddr.includes('...')) {
-        realAddr = localStorage.getItem(ONEAM_ADDRESS_KEY) || DEFAULT_1AM_ADDRESS;
+      if (!realAddr) {
+        realAddr = localStorage.getItem(ONEAM_ADDRESS_KEY) || '';
       }
-      try {
-        localStorage.setItem(ONEAM_ADDRESS_KEY, realAddr);
-      } catch {}
 
-      const { formatted, raw } = await fetchOnChainBalance(realAddr);
-      const walletApi = api || createGenericWalletApi(realAddr, '1AM Wallet');
+      if (!api && !realAddr) {
+        setWalletState({
+          status: 'error',
+          message:
+            '1AM Wallet extension was not detected in your browser. Please install the 1AM extension or try the Demo Wallet option below.',
+        });
+        return;
+      }
+
+      if (!realAddr || !realAddr.startsWith('mn_addr_')) {
+        setWalletState({
+          status: 'error',
+          message:
+            '1AM wallet connected but your address could not be verified. Make sure 1AM is unlocked and set to Preview or Preprod network.',
+        });
+        return;
+      }
+
+      try { localStorage.setItem(ONEAM_ADDRESS_KEY, realAddr); } catch {}
+
+      const walletApi = api || createFallbackWalletApi(realAddr, '1AM Wallet');
+      const { formatted, raw } = await fetchWalletBalance(walletApi);
       apiRef.current = walletApi;
 
       setWalletState({
@@ -293,7 +276,7 @@ export function useMidnight(): MidnightHook {
         address: realAddr,
         balance: formatted,
         rawBalance: raw,
-        network: 'preview',
+        network: TARGET_NETWORK,
         walletType: '1am',
         connectorName: '1AM Wallet',
         api: walletApi,
@@ -301,60 +284,95 @@ export function useMidnight(): MidnightHook {
       return;
     }
 
-    // ── 3. Midnight Lace Extension ────────────────────────────────────────
+    // ── Midnight Lace Extension ──────────────────────────────────────────────
     const win = window as any;
     const midnight = win.midnight;
     const mnLace = win.mnLace || win.cardano?.midnight;
 
-    let api: any;
-    let connName = 'Lace Wallet';
+    let api: any = null;
+    const connName = 'Lace Wallet';
 
     if (midnight && typeof midnight === 'object') {
-      if (midnight.lace && typeof midnight.lace.enable === 'function') {
-        try {
-          api = await midnight.lace.enable();
-        } catch {}
-      } else {
+      const laceConnector = midnight.mnLace || midnight.lace;
+      if (laceConnector) {
+        if (typeof laceConnector.connect === 'function') {
+          try { api = await laceConnector.connect(TARGET_NETWORK); } catch (e) {}
+        } else if (typeof laceConnector.enable === 'function') {
+          try { api = await laceConnector.enable(); } catch (e) {}
+        }
+      }
+      if (!api) {
         for (const connector of Object.values(midnight) as any[]) {
-          if (connector && typeof connector.enable === 'function') {
-            try {
-              api = await connector.enable();
-              break;
-            } catch {}
+          if (connector?.rdns === 'io.lace.midnight' || connector?.name?.toLowerCase().includes('lace')) {
+            if (typeof connector.connect === 'function') {
+              try { api = await connector.connect(TARGET_NETWORK); break; } catch (e) {}
+            } else if (typeof connector.enable === 'function') {
+              try { api = await connector.enable(); break; } catch (e) {}
+            }
+          }
+        }
+      }
+      if (!api) {
+        for (const connector of Object.values(midnight) as any[]) {
+          if (connector && typeof connector.connect === 'function') {
+            try { api = await connector.connect(TARGET_NETWORK); break; } catch (e) {}
+          } else if (connector && typeof connector.enable === 'function') {
+            try { api = await connector.enable(); break; } catch (e) {}
           }
         }
       }
     }
 
-    if (!api && mnLace && typeof mnLace.enable === 'function') {
-      try {
-        api = await mnLace.enable();
-      } catch {}
+    if (!api && mnLace) {
+      if (typeof mnLace.connect === 'function') {
+        try { api = await mnLace.connect(TARGET_NETWORK); } catch (e) {}
+      } else if (typeof mnLace.enable === 'function') {
+        try { api = await mnLace.enable(); } catch (e) {}
+      }
     }
 
-    let realAddr = customAddressOrSeed?.trim() || '';
+    let realAddr = '';
     if (api) {
       try {
-        realAddr =
-          (await api.getUnshieldedAddress?.()) ||
-          (await api.getAddress?.()) ||
-          (await api.getAddresses?.())?.[0] ||
-          api.state?.()?.address ||
-          api.account?.address ||
-          realAddr;
-      } catch {}
+        const raw =
+          (await api.getUnshieldedAddress?.()) ??
+          (await api.getAddress?.()) ??
+          (await api.getAddresses?.())?.[0] ??
+          (await api.getShieldedAddresses?.()) ??
+          api.state?.()?.address ??
+          api.account?.address ??
+          null;
+        console.log('[useMidnight] raw address from Lace wallet:', raw);
+        realAddr = extractAddr(raw);
+      } catch (e) { console.warn('[useMidnight] Lace address read error:', e); }
     }
 
-    // Read distinct Lace address
-    if (!realAddr || realAddr.includes('...')) {
-      realAddr = localStorage.getItem(LACE_ADDRESS_KEY) || DEFAULT_LACE_ADDRESS;
+    if (!realAddr) {
+      realAddr = localStorage.getItem(LACE_ADDRESS_KEY) || '';
     }
-    try {
-      localStorage.setItem(LACE_ADDRESS_KEY, realAddr);
-    } catch {}
 
-    const { formatted, raw } = await fetchOnChainBalance(realAddr);
-    const walletApi = api || createGenericWalletApi(realAddr, 'Lace Wallet');
+    if (!api && !realAddr) {
+      setWalletState({
+        status: 'error',
+        message:
+          'Midnight Lace wallet extension was not detected in your browser. Please install Midnight Lace or try the Demo Wallet option below.',
+      });
+      return;
+    }
+
+    if (!realAddr || !realAddr.startsWith('mn_addr_')) {
+      setWalletState({
+        status: 'error',
+        message:
+          'Midnight Lace wallet connected but your address could not be verified. Make sure Midnight Lace is unlocked and set to the correct network.',
+      });
+      return;
+    }
+
+    try { localStorage.setItem(LACE_ADDRESS_KEY, realAddr); } catch {}
+
+    const walletApi = api || createFallbackWalletApi(realAddr, 'Lace Wallet');
+    const { formatted, raw } = await fetchWalletBalance(walletApi);
     apiRef.current = walletApi;
 
     setWalletState({
@@ -362,12 +380,12 @@ export function useMidnight(): MidnightHook {
       address: realAddr,
       balance: formatted,
       rawBalance: raw,
-      network: 'preview',
+      network: TARGET_NETWORK,
       walletType: 'lace',
       connectorName: connName,
       api: walletApi,
     });
-  }, [topUpDemoBalance]);
+  }, []);
 
   const disconnect = useCallback(() => {
     apiRef.current = null;
@@ -383,9 +401,9 @@ export function useMidnight(): MidnightHook {
     connect,
     disconnect,
     clearError,
-    topUpDemoBalance,
     targetNetwork: TARGET_NETWORK,
     isLaceAvailable,
     is1amAvailable,
   };
 }
+

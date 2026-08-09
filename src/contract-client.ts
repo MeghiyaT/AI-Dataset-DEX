@@ -71,8 +71,19 @@ export function createProviders(
   networkConfig: NetworkConfig,
   opts: { privateStateId?: string } = {},
 ): any {
+  const envPassword = process.env.PRIVATE_STATE_PASSWORD?.trim();
+  const currentNetwork = resolveNetwork().network;
   const privateStatePassword =
-    process.env.PRIVATE_STATE_PASSWORD?.trim() || 'Local-Devnet-Development-Placeholder-1';
+    envPassword ??
+    (currentNetwork === 'undeployed'
+      ? 'Local-Devnet-Development-Placeholder-1'
+      : (() => {
+          throw new Error(
+            'PRIVATE_STATE_PASSWORD environment variable is required on non-local networks. ' +
+            'Set it to a strong random value in your shell or .env file.\n' +
+            `Current network: ${currentNetwork}`,
+          );
+        })());
   const accountId = walletCtx.unshieldedKeystore.getBech32Address().toString();
 
   const walletProvider = {

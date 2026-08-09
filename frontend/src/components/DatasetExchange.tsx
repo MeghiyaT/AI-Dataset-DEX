@@ -11,6 +11,9 @@ import type { NavSection } from '../App';
 import type { RegistryState, DataListing } from '../hooks/useIndexer';
 import type { WalletState, WalletType } from '../hooks/useMidnight';
 
+import type { UserProfileHook } from '../hooks/useUserProfile';
+import { ProfileDashboard } from './ProfileDashboard';
+
 interface Props {
   walletApi: any;
   walletState: WalletState;
@@ -21,9 +24,13 @@ interface Props {
   indexerLoading: boolean;
   indexerError: string | null;
   contractAddress: string;
+  walletAddress: string | null;
+  profileHook: UserProfileHook;
   onRefresh: () => void;
   onAddListing: (listing: DataListing) => void;
   onIncrementVerified: () => void;
+  onToggleArchive?: (datasetId: string) => void;
+  onRemoveListing?: (datasetId: string) => void;
 }
 
 const FAVORITES_STORAGE_KEY = 'datavault_favorite_dataset_ids';
@@ -51,6 +58,10 @@ export function DatasetExchange({
   onRefresh,
   onAddListing,
   onIncrementVerified,
+  walletAddress,
+  profileHook,
+  onToggleArchive,
+  onRemoveListing,
 }: Props) {
   const [inspectModalListing, setInspectModalListing] = useState<DataListing | null>(null);
   const [quickVerifyListing, setQuickVerifyListing] = useState<DataListing | null>(null);
@@ -74,7 +85,7 @@ export function DatasetExchange({
       {activeSection === 'about' && (
         <AboutView
           verifiedCount={registryState.verifiedCount}
-          listingCount={registryState.listings.length}
+          listingCount={registryState.listings.filter((l) => l.isActive !== false).length}
           onGoMarketplace={() => onSelectSection('marketplace')}
           onGoRegister={() => onSelectSection('register')}
           onGoVerifier={() => onSelectSection('verifier')}
@@ -106,6 +117,8 @@ export function DatasetExchange({
           walletState={walletState}
           onConnect={onConnect}
           onAddListing={onAddListing}
+          onToggleArchive={onToggleArchive}
+          onRemoveListing={onRemoveListing}
           onSuccess={() => onSelectSection('marketplace')}
         />
       )}
@@ -115,12 +128,24 @@ export function DatasetExchange({
         <VerifierView
           walletApi={walletApi}
           walletState={walletState}
-          listings={registryState.listings}
+          listings={registryState.listings.filter((l) => l.isActive !== false)}
           favorites={favorites}
           onToggleFavorite={toggleFavorite}
           preselectedListing={quickVerifyListing}
           onIncrementVerified={onIncrementVerified}
           onGoRegister={() => onSelectSection('register')}
+        />
+      )}
+
+      {/* ── 5. Profile Section ──────────────────────────────────────────────── */}
+      {activeSection === 'profile' && walletAddress && (
+        <ProfileDashboard
+          walletAddress={walletAddress}
+          profileHook={profileHook}
+          registryState={registryState}
+          onSelectSection={onSelectSection}
+          onToggleArchive={onToggleArchive}
+          onRemoveListing={onRemoveListing}
         />
       )}
 
@@ -130,6 +155,8 @@ export function DatasetExchange({
           listing={inspectModalListing}
           isFavorite={favorites.includes(inspectModalListing.datasetId)}
           onToggleFavorite={() => toggleFavorite(inspectModalListing.datasetId)}
+          onToggleArchive={onToggleArchive}
+          onRemoveListing={onRemoveListing}
           onClose={() => setInspectModalListing(null)}
           onVerify={() => {
             setQuickVerifyListing(inspectModalListing);
@@ -408,6 +435,8 @@ function MarketplaceView({
     const standardSet = new Set(['Healthcare AI', 'LLM Reasoning', 'Financial AI', 'Computer Vision']);
 
     return listings.filter((l) => {
+      if (l.isActive === false && selectedCat !== '★ Favorites') return false;
+
       let matchCat = true;
       if (selectedCat === 'All') {
         matchCat = true;
@@ -638,17 +667,20 @@ function RegisterView({
   walletState,
   onConnect,
   onAddListing,
+  onToggleArchive,
+  onRemoveListing,
   onSuccess,
 }: {
   walletApi: any;
   walletState: WalletState;
   onConnect: (type: WalletType) => Promise<void>;
   onAddListing: (l: DataListing) => void;
+  onToggleArchive?: (id: string) => void;
+  onRemoveListing?: (id: string) => void;
   onSuccess: () => void;
 }) {
   const isConnected = walletState.status === 'connected';
-  const isDemo = isConnected && walletState.walletType === 'demo';
-  const isAuthorized = isConnected && !isDemo;
+  const isAuthorized = isConnected;
 
   const [datasetName, setDatasetName] = useState('');
   const [category, setCategory] = useState('Healthcare AI');
@@ -659,6 +691,8 @@ function RegisterView({
   const [file, setFile] = useState<File | null>(null);
   const [status, setStatus] = useState<'idle' | 'fingerprinting' | 'recording' | 'done' | 'error'>('idle');
   const [txHash, setTxHash] = useState<string | null>(null);
+  const [registeredId, setRegisteredId] = useState<string | null>(null);
+  const [isArchived, setIsArchived] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -666,10 +700,6 @@ function RegisterView({
   const processFile = (f: File) => {
     if (!isConnected) {
       setErrorMsg('Please connect your Midnight wallet (Lace or 1AM) before selecting a dataset file.');
-      return;
-    }
-    if (isDemo) {
-      setErrorMsg('Demo Sandbox accounts are restricted to verification only. Connect Lace or 1AM to register datasets.');
       return;
     }
     setFile(f);
@@ -700,11 +730,6 @@ function RegisterView({
   const handleRegister = async () => {
     if (!isConnected) {
       setErrorMsg('Please connect an authenticated Midnight wallet (Lace or 1AM) before registering a dataset.');
-      return;
-    }
-
-    if (isDemo) {
-      setErrorMsg('Demo Sandbox accounts can only verify datasets. Please connect a Lace or 1AM wallet to register new datasets.');
       return;
     }
 
@@ -772,6 +797,8 @@ function RegisterView({
       }
 
       setTxHash(hash);
+      setRegisteredId(datasetIdHex);
+      setIsArchived(false);
       setStatus('done');
 
       onAddListing({
@@ -831,36 +858,7 @@ function RegisterView({
           </div>
         )}
 
-        {/* 2. DEMO ACCOUNT RESTRICTION NOTICE */}
-        {isDemo && (
-          <div
-            style={{
-              border: '1px solid rgba(234, 179, 8, 0.4)',
-              background: 'rgba(234, 179, 8, 0.06)',
-              borderRadius: 'var(--radius-md)',
-              padding: '1.25rem 1.5rem',
-              marginBottom: '1.75rem',
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '0.4rem' }}>
-              <span style={{ fontSize: '1.4rem' }}>⚠️</span>
-              <div style={{ fontWeight: 700, color: '#fff', fontSize: '1.05rem' }}>
-                Demo Sandbox Account: Verification Access Only
-              </div>
-            </div>
-            <p style={{ fontSize: '0.86rem', color: 'var(--text-muted)', marginBottom: '1rem', lineHeight: 1.5 }}>
-              Your instant demo sandbox account is restricted to testing <strong>Zero-Knowledge Authenticity Proofs</strong> in the <em>Verify Authenticity</em> tab. To register and publish new datasets on the Midnight blockchain, please connect an authenticated Lace or 1AM wallet.
-            </p>
-            <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
-              <button className="btn btn-primary btn-sm" onClick={() => onConnect('1am')}>
-                🌙 Switch to 1AM Wallet
-              </button>
-              <button className="btn btn-secondary btn-sm" onClick={() => onConnect('lace')}>
-                🦊 Switch to Lace Wallet
-              </button>
-            </div>
-          </div>
-        )}
+
 
         {/* 3. AUTHORIZED CONNECTED BADGE */}
         {isAuthorized && (
@@ -906,8 +904,6 @@ function RegisterView({
                 fileInputRef.current?.click();
               } else if (!isConnected) {
                 setErrorMsg('Please connect your Midnight wallet (Lace or 1AM) first.');
-              } else if (isDemo) {
-                setErrorMsg('Demo Sandbox accounts can only verify datasets. Connect Lace or 1AM to register.');
               }
             }}
           >
@@ -1064,42 +1060,81 @@ function RegisterView({
           </div>
         )}
 
-        {status === 'done' && txHash && (
-          <div style={{ background: 'rgba(16, 185, 129, 0.1)', border: '1px solid rgba(16, 185, 129, 0.3)', borderRadius: 'var(--radius-sm)', padding: '0.8rem 1rem', color: '#6ee7b7', fontSize: '0.85rem', marginBottom: '1.25rem' }}>
-            <div>✓ Dataset Registered on Midnight Blockchain!</div>
-            <div className="mono" style={{ fontSize: '0.75rem', marginTop: '0.2rem', wordBreak: 'break-all' }}>Transaction: {txHash}</div>
+        {status === 'done' && (
+          <div style={{ marginBottom: '1.5rem' }}>
+            {txHash && (
+              <div style={{ background: 'rgba(16, 185, 129, 0.1)', border: '1px solid rgba(16, 185, 129, 0.3)', borderRadius: 'var(--radius-sm)', padding: '0.85rem 1rem', color: '#6ee7b7', fontSize: '0.85rem', marginBottom: '1rem' }}>
+                <div>✓ Dataset Registered on Midnight Blockchain!</div>
+                <div className="mono" style={{ fontSize: '0.75rem', marginTop: '0.2rem', wordBreak: 'break-all' }}>Transaction: {txHash}</div>
+              </div>
+            )}
+
+            <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end', alignItems: 'center', flexWrap: 'wrap' }}>
+              {registeredId && onToggleArchive && (
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  onClick={() => {
+                    onToggleArchive(registeredId);
+                    setIsArchived(!isArchived);
+                  }}
+                  style={{ fontSize: '0.84rem' }}
+                >
+                  {isArchived ? '🔄 Restore to Marketplace' : '📦 Archive Dataset'}
+                </button>
+              )}
+
+              {registeredId && onRemoveListing && (
+                <button
+                  type="button"
+                  className="btn btn-sm"
+                  onClick={() => {
+                    if (confirm('Are you sure you want to permanently remove this dataset listing from the marketplace?')) {
+                      onRemoveListing(registeredId);
+                      setStatus('idle');
+                      setRegisteredId(null);
+                    }
+                  }}
+                  style={{
+                    background: 'rgba(239, 68, 68, 0.12)',
+                    border: '1px solid rgba(239, 68, 68, 0.35)',
+                    color: '#f87171',
+                    fontSize: '0.84rem',
+                    padding: '0.45rem 0.85rem',
+                    borderRadius: 'var(--radius-sm)',
+                    cursor: 'pointer',
+                  }}
+                >
+                  🗑️ Remove Listing
+                </button>
+              )}
+
+              <button className="btn btn-primary" onClick={onSuccess}>
+                🚀 View in Marketplace ↗
+              </button>
+            </div>
           </div>
         )}
 
-        <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-          {status === 'done' ? (
-            <button className="btn btn-primary" onClick={onSuccess}>
-              🚀 View in Marketplace
-            </button>
-          ) : !isConnected ? (
-            <button className="btn btn-primary btn-lg" onClick={() => onConnect('1am')}>
-              🔒 Connect Wallet to Register
-            </button>
-          ) : isDemo ? (
-            <button
-              className="btn btn-secondary btn-lg"
-              disabled
-              style={{ opacity: 0.65, cursor: 'not-allowed' }}
-            >
-              🔒 Register Restricted (Demo Mode: Verify Only)
-            </button>
-          ) : (
-            <button
-              className="btn btn-primary btn-lg"
-              onClick={handleRegister}
-              disabled={status === 'fingerprinting' || status === 'recording' || !file}
-            >
-              {status === 'fingerprinting' && '🔒 Creating Digital Fingerprint…'}
-              {status === 'recording' && '⛓️ Saving to Midnight Blockchain…'}
-              {status === 'idle' && '🔒 Create Fingerprint & Register on Blockchain'}
-            </button>
-          )}
-        </div>
+        {status !== 'done' && (
+          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+            {!isConnected ? (
+              <button className="btn btn-primary btn-lg" onClick={() => onConnect('1am')}>
+                🔒 Connect Wallet to Register
+              </button>
+            ) : (
+              <button
+                className="btn btn-primary btn-lg"
+                onClick={handleRegister}
+                disabled={status === 'fingerprinting' || status === 'recording' || !file}
+              >
+                {status === 'fingerprinting' && '🔒 Creating Digital Fingerprint…'}
+                {status === 'recording' && '⛓️ Saving to Midnight Blockchain…'}
+                {status === 'idle' && '🔒 Create Fingerprint & Register on Blockchain'}
+              </button>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -1111,7 +1146,6 @@ function RegisterView({
 
 function VerifierView({
   walletApi,
-  walletState,
   listings,
   favorites,
   onToggleFavorite,
@@ -1120,7 +1154,7 @@ function VerifierView({
   onGoRegister,
 }: {
   walletApi: any;
-  walletState: WalletState;
+  walletState?: WalletState;
   listings: DataListing[];
   favorites: string[];
   onToggleFavorite: (id: string) => void;
@@ -1151,7 +1185,6 @@ function VerifierView({
   }, [preselectedListing]);
 
   const activeListing = listings.find((l) => l.datasetId === selectedId) || listings[0];
-  const isDemo = walletState.status === 'connected' && walletState.walletType === 'demo';
   const isActiveFav = activeListing ? favorites.includes(activeListing.datasetId) : false;
 
   const filteredSelectorListings = useMemo(() => {
@@ -1282,11 +1315,6 @@ function VerifierView({
               Verify cryptographic integrity on Midnight blockchain with zero exposure of raw records.
             </p>
           </div>
-          {isDemo && (
-            <span className="badge badge-green" style={{ fontSize: '0.74rem' }}>
-              ✓ Demo Sandbox Active
-            </span>
-          )}
         </div>
 
         {/* ── STEP 1: SELECTED DATASET SPOTLIGHT ─────────────────────────── */}
@@ -1645,12 +1673,16 @@ function InspectModal({
   listing,
   isFavorite,
   onToggleFavorite,
+  onToggleArchive,
+  onRemoveListing,
   onClose,
   onVerify,
 }: {
   listing: DataListing;
   isFavorite: boolean;
   onToggleFavorite: () => void;
+  onToggleArchive?: (id: string) => void;
+  onRemoveListing?: (id: string) => void;
   onClose: () => void;
   onVerify: () => void;
 }) {
@@ -1717,7 +1749,40 @@ function InspectModal({
           </div>
         </div>
 
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.6rem' }}>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.6rem', flexWrap: 'wrap' }}>
+          {onToggleArchive && (
+            <button
+              className="btn btn-secondary btn-sm"
+              onClick={() => {
+                onToggleArchive(listing.datasetId);
+                onClose();
+              }}
+            >
+              {listing.isActive !== false ? '📦 Archive' : '🔄 Restore'}
+            </button>
+          )}
+          {onRemoveListing && (
+            <button
+              className="btn btn-sm"
+              style={{
+                background: 'rgba(239, 68, 68, 0.12)',
+                border: '1px solid rgba(239, 68, 68, 0.35)',
+                color: '#f87171',
+                fontSize: '0.78rem',
+                padding: '0.35rem 0.75rem',
+                borderRadius: 'var(--radius-sm)',
+                cursor: 'pointer',
+              }}
+              onClick={() => {
+                if (confirm(`Are you sure you want to remove "${listing.datasetName}" from the marketplace?`)) {
+                  onRemoveListing(listing.datasetId);
+                  onClose();
+                }
+              }}
+            >
+              🗑️ Remove
+            </button>
+          )}
           <button className="btn btn-secondary btn-sm" onClick={onClose}>Close</button>
           <button className="btn btn-primary btn-sm" onClick={onVerify}>⚡ Verify Authenticity</button>
         </div>

@@ -100,4 +100,18 @@ export class DatasetStore {
 }
 
 export const datasetStoreToSliceProvider = (store: DatasetStore): SliceProvider =>
-  async (datasetId: Uint8Array): Promise<Uint8Array[]> => store.get(datasetId) ?? [];
+  async (datasetId: Uint8Array): Promise<Uint8Array[]> => {
+    const slices = store.get(datasetId);
+    if (!slices || slices.length === 0) {
+      const idHex = Array.from(datasetId)
+        .map((b) => b.toString(16).padStart(2, '0'))
+        .join('')
+        .slice(0, 16);
+      throw new Error(
+        `No dataset slices found for id ${idHex}… ` +
+          'Call store.set(id, slices) before invoking the circuit, ' +
+          'or pass --file to load them from disk.',
+      );
+    }
+    return slices;
+  };

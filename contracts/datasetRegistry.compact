@@ -67,7 +67,8 @@ struct DataListing {
 export ledger registry: Map<Bytes<32>, DataListing>;
 
 // Hash of the deployer's secret key; establishes the registry owner identity.
-export ledger ownerCommit: Bytes<32>;
+// sealed = the compiler prevents any exported circuit from ever overwriting this.
+export sealed ledger ownerCommit: Bytes<32>;
 
 // Running tally of successful integrity proofs.
 export ledger verifiedCount: Counter;
@@ -91,7 +92,13 @@ circuit providerCommitmentOf(sk: Bytes<32>): Bytes<32> {
 }
 
 circuit contentCommitmentOf(slices: Vector<16, Bytes<32>>): Bytes<32> {
-  return persistentHash<Vector<16, Bytes<32>>>(slices);
+  // Domain separator distinguishes content commitments from any future
+  // nullifiers or other hashes derived from the same input type.
+  return persistentHash<Vector<17, Bytes<32>>>(
+    [pad(32, "datavault:content:"), slices[0], slices[1], slices[2], slices[3],
+     slices[4], slices[5], slices[6], slices[7], slices[8], slices[9],
+     slices[10], slices[11], slices[12], slices[13], slices[14], slices[15]]
+  );
 }
 
 // ---------------------------------------------------------------------------

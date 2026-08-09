@@ -130,6 +130,8 @@ export interface IndexerHook {
   contractAddress: string;
   addOptimisticListing: (listing: DataListing) => void;
   incrementVerifiedCount: () => void;
+  toggleArchiveListing: (datasetId: string) => void;
+  removeListing: (datasetId: string) => void;
 }
 
 function getInitialListings(): DataListing[] {
@@ -210,6 +212,39 @@ export function useIndexer(): IndexerHook {
     });
   }, []);
 
+  const toggleArchiveListing = useCallback((datasetId: string) => {
+    const cleanId = datasetId.startsWith('0x') ? datasetId.slice(2) : datasetId;
+
+    setState((prev) => {
+      const updatedListings = prev.listings.map((l) => {
+        if (l.datasetId === cleanId) {
+          return { ...l, isActive: !l.isActive };
+        }
+        return l;
+      });
+      saveLocalListings(updatedListings);
+      return {
+        ...prev,
+        listings: updatedListings,
+        lastSyncedAt: new Date(),
+      };
+    });
+  }, []);
+
+  const removeListing = useCallback((datasetId: string) => {
+    const cleanId = datasetId.startsWith('0x') ? datasetId.slice(2) : datasetId;
+
+    setState((prev) => {
+      const updatedListings = prev.listings.filter((l) => l.datasetId !== cleanId);
+      saveLocalListings(updatedListings);
+      return {
+        ...prev,
+        listings: updatedListings,
+        lastSyncedAt: new Date(),
+      };
+    });
+  }, []);
+
   const incrementVerifiedCount = useCallback(() => {
     setState((prev) => {
       const updated = prev.verifiedCount + 1;
@@ -239,5 +274,7 @@ export function useIndexer(): IndexerHook {
     contractAddress: CONTRACT_ADDRESS,
     addOptimisticListing,
     incrementVerifiedCount,
+    toggleArchiveListing,
+    removeListing,
   };
 }

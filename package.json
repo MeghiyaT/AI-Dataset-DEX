@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "type": "module",
   "description": "DataVault Exchange — a privacy-preserving, GDPR/CCPA-compliant decentralized exchange for AI training datasets, built on Midnight Network with Compact smart contracts.",
-  "author": "SPPU / INTO the Midnight bootcamp",
+  "author": "Meghiya Tulse",
   "license": "MIT",
   "scripts": {
     "setup": "tsx src/setup.ts",

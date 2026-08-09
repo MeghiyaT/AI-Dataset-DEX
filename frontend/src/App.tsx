@@ -2,10 +2,11 @@ import { useState } from 'react';
 import './index.css';
 import { useMidnight } from './hooks/useMidnight';
 import { useIndexer } from './hooks/useIndexer';
+import { useUserProfile } from './hooks/useUserProfile';
 import { WalletConnect } from './components/WalletConnect';
 import { DatasetExchange } from './components/DatasetExchange';
 
-export type NavSection = 'about' | 'marketplace' | 'register' | 'verifier';
+export type NavSection = 'about' | 'marketplace' | 'register' | 'verifier' | 'profile';
 
 function App() {
   const midnightHook = useMidnight();
@@ -22,6 +23,27 @@ function App() {
     midnightHook.walletState.status === 'connected'
       ? midnightHook.walletState.api
       : null;
+
+  const walletAddress =
+    midnightHook.walletState.status === 'connected'
+      ? midnightHook.walletState.address
+      : null;
+
+  const profileHook = useUserProfile(walletAddress);
+
+  // If the wallet disconnects while on the profile page, redirect to home.
+  const handleSelectSection = (sec: NavSection) => {
+    if (sec === 'profile' && !walletAddress) return;
+    setActiveSection(sec);
+  };
+
+  // When wallet disconnects, leave the profile page gracefully.
+  const handleDisconnect = () => {
+    if (activeSection === 'profile') setActiveSection('about');
+    midnightHook.disconnect();
+  };
+
+  const isConnected = midnightHook.walletState.status === 'connected';
 
   return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
@@ -76,7 +98,7 @@ function App() {
             </div>
           </div>
 
-          {/* Clean 4 Navigation Links (No redundant network tab) */}
+          {/* Navigation Links */}
           <nav style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
             {[
               { id: 'about', label: 'About & How It Works' },
@@ -86,7 +108,7 @@ function App() {
             ].map((link) => (
               <button
                 key={link.id}
-                onClick={() => setActiveSection(link.id as NavSection)}
+                onClick={() => handleSelectSection(link.id as NavSection)}
                 className="btn btn-ghost btn-sm"
                 style={{
                   padding: '0.45rem 0.85rem',
@@ -101,14 +123,38 @@ function App() {
                 {link.label}
               </button>
             ))}
+
+            {/* Profile button — only visible when a wallet is connected */}
+            {isConnected && (
+              <button
+                onClick={() => handleSelectSection('profile')}
+                className="btn btn-ghost btn-sm"
+                style={{
+                  padding: '0.45rem 0.85rem',
+                  fontSize: '0.85rem',
+                  borderRadius: 'var(--radius-sm)',
+                  background: activeSection === 'profile' ? 'rgba(139, 92, 246, 0.15)' : 'transparent',
+                  color: activeSection === 'profile' ? '#ffffff' : 'var(--text-muted)',
+                  border: activeSection === 'profile' ? '1px solid rgba(139, 92, 246, 0.35)' : '1px solid transparent',
+                  fontWeight: activeSection === 'profile' ? 700 : 500,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.35rem',
+                }}
+              >
+                <span>{profileHook.profile.avatarEmoji}</span>
+                <span>My Profile</span>
+              </button>
+            )}
           </nav>
 
-          {/* Right: Preview Badge & Wallet Button */}
+          {/* Right: Preview Badge & Wallet */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
             <span className="badge badge-purple" style={{ fontSize: '0.7rem' }}>
               <span className="pulse-dot" /> Preview
             </span>
-            <WalletConnect hook={midnightHook} />
+            {/* Pass custom disconnect handler to gracefully exit profile page */}
+            <WalletConnect hook={{ ...midnightHook, disconnect: handleDisconnect }} />
           </div>
         </div>
       </header>
@@ -120,11 +166,13 @@ function App() {
           walletState={midnightHook.walletState}
           onConnect={midnightHook.connect}
           activeSection={activeSection}
-          onSelectSection={(sec) => setActiveSection(sec)}
+          onSelectSection={handleSelectSection}
           registryState={indexer.state}
           indexerLoading={indexer.loading}
           indexerError={indexer.error}
           contractAddress={indexer.contractAddress}
+          walletAddress={walletAddress}
+          profileHook={profileHook}
           onRefresh={() => {
             indexer.refresh();
             showToast('✓ Synchronized with Midnight blockchain');
@@ -132,6 +180,14 @@ function App() {
           onAddListing={(listing) => {
             indexer.addOptimisticListing(listing);
             showToast(`✓ Dataset "${listing.datasetName}" registered successfully!`);
+          }}
+          onToggleArchive={(datasetId) => {
+            indexer.toggleArchiveListing(datasetId);
+            showToast('✓ Dataset archive status updated');
+          }}
+          onRemoveListing={(datasetId) => {
+            indexer.removeListing(datasetId);
+            showToast('✓ Dataset removed from marketplace');
           }}
           onIncrementVerified={() => {
             indexer.incrementVerifiedCount();

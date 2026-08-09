@@ -1,5 +1,5 @@
 // WalletConnect.tsx
-// Pure Web3 Connection: Connect Authenticated Wallets (Lace, 1AM) or Instant Sandbox.
+// Midnight Wallet Connection — supports Lace and 1AM extensions.
 
 import { useState } from 'react';
 import type { MidnightHook } from '../hooks/useMidnight';
@@ -14,7 +14,7 @@ function truncate(addr: string): string {
 }
 
 export function WalletConnect({ hook }: Props) {
-  const { walletState, connect, disconnect, targetNetwork, isLaceAvailable, is1amAvailable, topUpDemoBalance } = hook;
+  const { walletState, connect, disconnect, targetNetwork, isLaceAvailable, is1amAvailable } = hook;
   const [showMenu, setShowMenu] = useState(false);
   const [copied, setCopied] = useState(false);
 
@@ -26,7 +26,7 @@ export function WalletConnect({ hook }: Props) {
 
   return (
     <div style={{ position: 'relative' }}>
-      {/* ── Disconnected State: Clean Button ──────────────────────────────── */}
+      {/* ── Disconnected State ────────────────────────────────────────────── */}
       {walletState.status === 'idle' && (
         <div>
           <button
@@ -37,7 +37,6 @@ export function WalletConnect({ hook }: Props) {
             Connect Wallet ▾
           </button>
 
-          {/* Clean Dropdown */}
           {showMenu && (
             <div
               style={{
@@ -57,11 +56,11 @@ export function WalletConnect({ hook }: Props) {
                 Connect to Midnight
               </div>
               <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: '0.9rem' }}>
-                Select your authenticated Midnight wallet to sign transactions.
+                Select your Midnight wallet to sign transactions.
               </p>
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
-                {/* 1. 1AM Wallet Extension */}
+                {/* 1AM Wallet */}
                 <button
                   className="btn btn-secondary btn-sm"
                   onClick={() => {
@@ -74,12 +73,12 @@ export function WalletConnect({ hook }: Props) {
                     <span>🌙</span>
                     <span>1AM Wallet Extension</span>
                   </span>
-                  <span className="badge badge-cyan" style={{ fontSize: '0.65rem' }}>
-                    {is1amAvailable ? 'Detected' : 'Connect'}
+                  <span className={`badge ${is1amAvailable ? 'badge-cyan' : 'badge-subtle'}`} style={{ fontSize: '0.65rem' }}>
+                    {is1amAvailable ? '✓ Detected' : 'Connect'}
                   </span>
                 </button>
 
-                {/* 2. Lace Wallet Extension */}
+                {/* Lace Wallet */}
                 <button
                   className="btn btn-secondary btn-sm"
                   onClick={() => {
@@ -92,45 +91,63 @@ export function WalletConnect({ hook }: Props) {
                     <span>🦊</span>
                     <span>Lace Wallet (Midnight)</span>
                   </span>
-                  <span className="badge badge-purple" style={{ fontSize: '0.65rem' }}>
-                    {isLaceAvailable ? 'Detected' : 'Connect'}
+                  <span className={`badge ${isLaceAvailable ? 'badge-purple' : 'badge-subtle'}`} style={{ fontSize: '0.65rem' }}>
+                    {isLaceAvailable ? '✓ Detected' : 'Connect'}
                   </span>
                 </button>
 
-                {/* 3. Instant Demo Wallet */}
-                <button
-                  className="btn btn-secondary btn-sm"
-                  onClick={() => {
-                    setShowMenu(false);
-                    connect('demo');
-                  }}
-                  style={{ justifyContent: 'space-between', padding: '0.65rem 0.85rem' }}
-                >
-                  <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                    <span>⚡</span>
-                    <span>Instant Demo Sandbox</span>
-                  </span>
-                  <span className="badge badge-green" style={{ fontSize: '0.65rem' }}>
-                    1-Click
-                  </span>
-                </button>
+                <div style={{ borderTop: '1px solid var(--border-subtle)', paddingTop: '0.6rem' }}>
+                  <p style={{ fontSize: '0.72rem', color: 'var(--text-subtle)', textAlign: 'center', marginBottom: 0 }}>
+                    Don't have a Midnight wallet?{' '}
+                    <a
+                      href="https://docs.midnight.network/getting-started/wallet"
+                      target="_blank"
+                      rel="noreferrer"
+                      style={{ color: 'var(--primary-light)' }}
+                    >
+                      Get Lace ↗
+                    </a>
+                  </p>
+                </div>
               </div>
             </div>
           )}
         </div>
       )}
 
-      {/* ── Connecting State ──────────────────────────────────────────────── */}
+      {/* ── Connecting State ─────────────────────────────────────────────── */}
       {walletState.status === 'connecting' && (
         <button className="btn btn-secondary btn-sm" disabled>
           Connecting…
         </button>
       )}
 
-      {/* ── Connected State: Account Badge with Live Balance ──────────────── */}
+      {/* ── Error State: show retry button so the UI never goes blank ─────── */}
+      {walletState.status === 'error' && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <button
+            id="btn-reconnect-wallet"
+            className="btn btn-sm"
+            title={walletState.message}
+            onClick={() => { hook.clearError(); setShowMenu(true); }}
+            style={{
+              background: 'rgba(239, 68, 68, 0.12)',
+              border: '1px solid rgba(239, 68, 68, 0.4)',
+              color: '#f87171',
+              fontSize: '0.78rem',
+              padding: '0.35rem 0.75rem',
+              borderRadius: 'var(--radius-full)',
+              cursor: 'pointer',
+            }}
+          >
+            ⚠ Wallet Error — Retry
+          </button>
+        </div>
+      )}
+
       {walletState.status === 'connected' && (
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-          {/* Live Balance Pill */}
+          {/* Balance Pill */}
           <div
             style={{
               padding: '0.35rem 0.75rem',
@@ -203,27 +220,17 @@ export function WalletConnect({ hook }: Props) {
                 </div>
               </div>
 
-              {/* Demo Top Up Button OR Faucet Link */}
+              {/* Faucet link for testnet */}
               <div style={{ marginBottom: '0.85rem' }}>
-                {walletState.walletType === 'demo' ? (
-                  <button
-                    className="btn btn-secondary btn-sm"
-                    onClick={topUpDemoBalance}
-                    style={{ width: '100%', justifyContent: 'center', fontSize: '0.76rem' }}
-                  >
-                    ⚡ Top Up Demo Balance (5,000 tNIGHT)
-                  </button>
-                ) : (
-                  <a
-                    href="https://midnight-tmnight-preview.nethermind.dev/"
-                    target="_blank"
-                    rel="noreferrer"
-                    className="btn btn-secondary btn-sm"
-                    style={{ width: '100%', justifyContent: 'center', fontSize: '0.76rem', textDecoration: 'none' }}
-                  >
-                    🚰 Get Free Test Tokens (Faucet ↗)
-                  </a>
-                )}
+                <a
+                  href="https://midnight-tmnight-preview.nethermind.dev/"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="btn btn-secondary btn-sm"
+                  style={{ width: '100%', justifyContent: 'center', fontSize: '0.76rem', textDecoration: 'none' }}
+                >
+                  🚰 Get Free Test Tokens (Faucet ↗)
+                </a>
               </div>
 
               <button

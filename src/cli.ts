@@ -144,7 +144,7 @@ export async function registerDataset(ctx: CliContext, opts: RegisterOpts): Prom
   return txData.public.txId;
 }
 
-export async function proveIntegrity(ctx: CliContext, label: string, file?: string): Promise<void> {
+export async function proveIntegrity(ctx: CliContext, label: string, file?: string): Promise<unknown> {
   const id = datasetIdFromLabel(label);
   let content = ctx.store.get(id);
   if (!content) {
@@ -157,7 +157,7 @@ export async function proveIntegrity(ctx: CliContext, label: string, file?: stri
   return txData;
 }
 
-export async function setDatasetActive(ctx: CliContext, label: string, active: boolean): Promise<void> {
+export async function setDatasetActive(ctx: CliContext, label: string, active: boolean): Promise<unknown> {
   const id = datasetIdFromLabel(label);
   const txData = await ctx.found.callTx.setActive(id, active);
   console.log(`  ✅ ${label} active=${active} txId ${txData.public.txId}`);
