@@ -131,7 +131,7 @@ npm run compile
 
 You should see output listing all 4 compiled circuits:
 
-![Compile output showing circuits: registerDataset, proveIntegrity, setActive, readRowCount](docs/screenshots/Screenshot 2026-08-09 at 5.33.35 PM.png)
+![Compile output showing circuits: registerDataset, proveIntegrity, setActive, readRowCount](docs/screenshots/compile.png)
 
 **5. Run the test suite**
 ```bash
@@ -149,7 +149,7 @@ Expected output:
    Duration  ~174ms
 ```
 
-![37 passing tests in Vitest](docs/screenshots/Screenshot 2026-08-09 at 5.35.30 PM.png)
+![37 passing tests in Vitest](docs/screenshots/tests.png)
 
 **6. Deploy the contract** *(optional — connects to Midnight Preview testnet)*
 
@@ -158,8 +158,6 @@ First, fund your wallet from the [Preview faucet](https://midnight-tmnight-previ
 ```bash
 npm run setup -- --network preview
 ```
-
-![Deployment output showing the contract address](docs/screenshots/deploy.png)
 
 **7. Start the frontend**
 ```bash
@@ -271,32 +269,6 @@ Workflow file: [`.github/workflows/test.yml`](.github/workflows/test.yml)
 - **Raw dataset files** are never transmitted — they are processed in memory on your local machine only
 - **The proof server** runs locally in Docker; private data is passed to it briefly to generate the proof, then immediately discarded
 - All sensitive state files are excluded from git by `.gitignore`
-
----
-
----
-
-## Screenshots
-
-| File | Status | How to get it |
-|---|---|---|
-| `docs/screenshots/compile.png` | ✅ Done | Auto-generated |
-| `docs/screenshots/tests.png` | ✅ Done | Auto-generated |
-| `docs/screenshots/deploy.png` | ⏳ Pending | Run `npm run setup -- --network preprod` and screenshot the terminal |
-| `docs/screenshots/wallet-connect.png` | ⏳ Pending | Screenshot the live DApp with a wallet connected |
-| `docs/screenshots/register.png` | ⏳ Pending | Screenshot the Register tab with a file selected |
-| `docs/screenshots/verify.png` | ⏳ Pending | Screenshot a successful verification result |
-
----
-
-## Deployed contract
-
-| Network | Contract Address | Status |
-|---|---|---|
-| **Preview** | `mn1qqpqq3hkk9j8a7…` | 🟢 Live |
-| **Preprod** | *(coming after redeploy with v2 contract)* | 🔄 In progress |
-
-To verify the Preview deployment independently, check the [Midnight Explorer](https://midnight.network).
 
 ---
 
