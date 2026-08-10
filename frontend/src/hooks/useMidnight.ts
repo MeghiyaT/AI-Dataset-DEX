@@ -1,5 +1,5 @@
 // useMidnight.ts
-// Midnight Wallet Connector — supports Midnight Lace, 1AM extensions, and Demo Mode.
+// Midnight Wallet Connector — supports Midnight Lace & 1AM browser extensions.
 //
 // ─── Privacy Note ────────────────────────────────────────────────────────────
 // Private witnesses (raw dataset slices, provider secret) NEVER enter React state.
@@ -11,28 +11,51 @@ const TARGET_NETWORK = (import.meta.env.VITE_NETWORK as string) || 'preprod';
 
 const LACE_ADDRESS_KEY = 'datavault_lace_address';
 const ONEAM_ADDRESS_KEY = 'datavault_1am_address';
+const LAST_WALLET_KEY = 'datavault_last_wallet';
 
-// Safely extract a bech32 string from any shape the wallet API might return.
-// Wallets sometimes return { address: '...' }, { bech32: '...' }, { unshieldedAddress: '...' }, or arrays.
+// Safely extract an address string from any shape the wallet API might return.
 function extractAddr(raw: unknown): string {
   if (!raw) return '';
-  if (typeof raw === 'string') return raw;
+  if (typeof raw === 'string') return raw.trim();
   if (Array.isArray(raw)) {
     for (const item of raw) {
       const candidate = extractAddr(item);
       if (candidate) return candidate;
     }
   }
-  if (typeof raw === 'object') {
+  if (typeof raw === 'object' && raw !== null) {
     const obj = raw as Record<string, unknown>;
-    const candidate =
-      obj.address ?? obj.bech32 ?? obj.unshieldedAddress ?? obj.addr ?? obj.shieldedAddress;
-    if (candidate && candidate !== obj) return extractAddr(candidate);
+    const priorityKeys = ['unshieldedAddress', 'shieldedAddress', 'address', 'bech32', 'addr', 'dustAddress'];
+    for (const key of priorityKeys) {
+      if (obj[key] && typeof obj[key] === 'string') {
+        const val = (obj[key] as string).trim();
+        if (val) return val;
+      }
+    }
     for (const val of Object.values(obj)) {
-      if (typeof val === 'string' && val.startsWith('mn_addr_')) return val;
+      if (typeof val === 'string') {
+        const trimmed = val.trim();
+        if (trimmed.startsWith('mn_') || trimmed.startsWith('mn1') || trimmed.startsWith('0x') || trimmed.length >= 10) {
+          return trimmed;
+        }
+      } else if (typeof val === 'object' && val !== null) {
+        const candidate = extractAddr(val);
+        if (candidate) return candidate;
+      }
     }
   }
   return '';
+}
+
+function isValidMidnightAddress(addr: string): boolean {
+  if (!addr || typeof addr !== 'string') return false;
+  const cleaned = addr.trim();
+  if (cleaned.length < 8) return false;
+  return (
+    cleaned.startsWith('mn') ||
+    cleaned.startsWith('0x') ||
+    cleaned.length >= 10
+  );
 }
 
 export type WalletType = '1am' | 'lace';
@@ -62,8 +85,63 @@ export interface MidnightHook {
   is1amAvailable: boolean;
 }
 
-// ── Get balance from the wallet extension (the only reliable source) ──────────
-// Handles BigInt, numeric values, strings, or token balance records { [tokenType]: bigint }
+// Safely attempt to connect to a Midnight DApp Connector object
+async function tryConnect(connector: any, network: string): Promise<any> {
+  if (!connector) return null;
+  if (typeof connector.connect === 'function') {
+    try {
+      const api = await connector.connect(network);
+      if (api) return api;
+    } catch (e) {
+      console.warn('[useMidnight] connector.connect(network) warning:', e);
+    }
+    try {
+      const api = await connector.connect();
+      if (api) return api;
+    } catch (e) {
+      console.warn('[useMidnight] connector.connect() warning:', e);
+    }
+  }
+  if (typeof connector.enable === 'function') {
+    try {
+      const api = await connector.enable();
+      if (api) return api;
+    } catch (e) {
+      console.warn('[useMidnight] connector.enable() warning:', e);
+    }
+  }
+  return null;
+}
+
+// Safely retrieve address from connected API object
+async function getWalletAddressFromApi(api: any): Promise<string> {
+  if (!api) return '';
+  const methods = [
+    () => api.getUnshieldedAddress?.(),
+    () => api.getShieldedAddresses?.(),
+    () => api.getDustAddress?.(),
+    () => api.getAddress?.(),
+    () => api.getAddresses?.(),
+    () => api.getConfiguration?.(),
+    () => api.state?.()?.address,
+    () => api.account?.address,
+  ];
+
+  for (const fn of methods) {
+    try {
+      const res = await fn();
+      const addr = extractAddr(res);
+      if (addr && isValidMidnightAddress(addr)) {
+        return addr;
+      }
+    } catch (e) {
+      // continue trying alternative address methods
+    }
+  }
+  return '';
+}
+
+// Fetch balance from the wallet extension
 async function fetchWalletBalance(api: any): Promise<{ formatted: string; raw: number }> {
   if (!api) return { formatted: '0.0 tNIGHT', raw: 0 };
 
@@ -80,7 +158,7 @@ async function fetchWalletBalance(api: any): Promise<{ formatted: string; raw: n
         return isNaN(num) ? null : num;
       }
     }
-    if (typeof val === 'object') {
+    if (typeof val === 'object' && val !== null) {
       const obj = val as Record<string, unknown>;
       for (const k of Object.keys(obj)) {
         const res = parseValue(obj[k]);
@@ -93,6 +171,7 @@ async function fetchWalletBalance(api: any): Promise<{ formatted: string; raw: n
   const methods = [
     () => api.getUnshieldedBalances?.(),
     () => api.getShieldedBalances?.(),
+    () => api.getDustBalance?.(),
     () => api.getBalance?.(),
     () => api.getUnshieldedBalance?.(),
     () => api.state?.()?.unshielded?.balances?.NIGHT,
@@ -105,7 +184,7 @@ async function fetchWalletBalance(api: any): Promise<{ formatted: string; raw: n
     try {
       const raw = await method();
       const num = parseValue(raw);
-      if (num !== null && num > 0) {
+      if (num !== null && num >= 0) {
         return { formatted: `${num.toLocaleString()} tNIGHT`, raw: num };
       }
     } catch {}
@@ -114,7 +193,7 @@ async function fetchWalletBalance(api: any): Promise<{ formatted: string; raw: n
   return { formatted: '0.0 tNIGHT', raw: 0 };
 }
 
-// Minimal shim for when the real wallet API is unavailable.
+// Minimal shim for when stored address is present but window object is temporarily reloaded
 function createFallbackWalletApi(address: string, name: string) {
   return {
     name,
@@ -132,7 +211,7 @@ export function useMidnight(): MidnightHook {
   const [is1amAvailable, setIs1amAvailable] = useState(false);
   const apiRef = useRef<any>(null);
 
-  // Auto-detect injected Midnight extensions per Midnight DApp Connector API v4 standard
+  // Detect injected Midnight extensions
   useEffect(() => {
     const detect = () => {
       const win = window as any;
@@ -167,8 +246,8 @@ export function useMidnight(): MidnightHook {
     };
 
     detect();
-    const t1 = setTimeout(detect, 500);
-    const t2 = setTimeout(detect, 1500);
+    const t1 = setTimeout(detect, 400);
+    const t2 = setTimeout(detect, 1200);
     return () => {
       clearTimeout(t1);
       clearTimeout(t2);
@@ -184,64 +263,32 @@ export function useMidnight(): MidnightHook {
       const midnight = win.midnight;
 
       let api: any = null;
-      let realAddr = '';
 
       if (midnight && typeof midnight === 'object') {
-        // Pass 1: explicit '1am' key
         if (midnight['1am']) {
-          const conn = midnight['1am'];
-          if (typeof conn.connect === 'function') {
-            try { api = await conn.connect(TARGET_NETWORK); } catch (e) { console.warn('1AM connect:', e); }
-          } else if (typeof conn.enable === 'function') {
-            try { api = await conn.enable(); } catch (e) {}
-          }
+          api = await tryConnect(midnight['1am'], TARGET_NETWORK);
         }
-        // Pass 2: check by rdns 'com.midnight.1am'
         if (!api) {
           for (const connector of Object.values(midnight) as any[]) {
-            if (connector?.rdns === 'com.midnight.1am') {
-              if (typeof connector.connect === 'function') {
-                try { api = await connector.connect(TARGET_NETWORK); break; } catch (e) {}
-              } else if (typeof connector.enable === 'function') {
-                try { api = await connector.enable(); break; } catch (e) {}
-              }
+            if (connector?.rdns === 'com.midnight.1am' || connector?.name?.toLowerCase().includes('1am')) {
+              api = await tryConnect(connector, TARGET_NETWORK);
+              if (api) break;
             }
           }
         }
-        // Pass 3: any connector in window.midnight with connect() or enable()
         if (!api) {
           for (const connector of Object.values(midnight) as any[]) {
-            if (connector && typeof connector.connect === 'function') {
-              try { api = await connector.connect(TARGET_NETWORK); break; } catch (e) {}
-            } else if (connector && typeof connector.enable === 'function') {
-              try { api = await connector.enable(); break; } catch (e) {}
-            }
+            api = await tryConnect(connector, TARGET_NETWORK);
+            if (api) break;
           }
         }
       }
 
       if (!api && win.oneAm) {
-        if (typeof win.oneAm.connect === 'function') {
-          try { api = await win.oneAm.connect(TARGET_NETWORK); } catch {}
-        } else if (typeof win.oneAm.enable === 'function') {
-          try { api = await win.oneAm.enable(); } catch {}
-        }
+        api = await tryConnect(win.oneAm, TARGET_NETWORK);
       }
 
-      if (api) {
-        try {
-          const raw =
-            (await api.getUnshieldedAddress?.()) ??
-            (await api.getAddress?.()) ??
-            (await api.getAddresses?.())?.[0] ??
-            (await api.getShieldedAddresses?.()) ??
-            api.state?.()?.address ??
-            api.account?.address ??
-            null;
-          console.log('[useMidnight] raw address from 1AM wallet:', raw);
-          realAddr = extractAddr(raw);
-        } catch (e) { console.warn('[useMidnight] 1AM address read error:', e); }
-      }
+      let realAddr = await getWalletAddressFromApi(api);
 
       if (!realAddr) {
         realAddr = localStorage.getItem(ONEAM_ADDRESS_KEY) || '';
@@ -251,21 +298,24 @@ export function useMidnight(): MidnightHook {
         setWalletState({
           status: 'error',
           message:
-            '1AM Wallet extension was not detected in your browser. Please install the 1AM extension or try the Demo Wallet option below.',
+            '1AM Wallet extension was not detected in your browser. Please install the 1AM extension or check if it is enabled.',
         });
         return;
       }
 
-      if (!realAddr || !realAddr.startsWith('mn_addr_')) {
+      if (!realAddr || !isValidMidnightAddress(realAddr)) {
         setWalletState({
           status: 'error',
           message:
-            '1AM wallet connected but your address could not be verified. Make sure 1AM is unlocked and set to Preview or Preprod network.',
+            '1AM wallet connected but your address could not be verified. Make sure 1AM is unlocked and set to Preprod network.',
         });
         return;
       }
 
-      try { localStorage.setItem(ONEAM_ADDRESS_KEY, realAddr); } catch {}
+      try {
+        localStorage.setItem(ONEAM_ADDRESS_KEY, realAddr);
+        localStorage.setItem(LAST_WALLET_KEY, '1am');
+      } catch {}
 
       const walletApi = api || createFallbackWalletApi(realAddr, '1AM Wallet');
       const { formatted, raw } = await fetchWalletBalance(walletApi);
@@ -295,57 +345,29 @@ export function useMidnight(): MidnightHook {
     if (midnight && typeof midnight === 'object') {
       const laceConnector = midnight.mnLace || midnight.lace;
       if (laceConnector) {
-        if (typeof laceConnector.connect === 'function') {
-          try { api = await laceConnector.connect(TARGET_NETWORK); } catch (e) {}
-        } else if (typeof laceConnector.enable === 'function') {
-          try { api = await laceConnector.enable(); } catch (e) {}
-        }
+        api = await tryConnect(laceConnector, TARGET_NETWORK);
       }
       if (!api) {
         for (const connector of Object.values(midnight) as any[]) {
           if (connector?.rdns === 'io.lace.midnight' || connector?.name?.toLowerCase().includes('lace')) {
-            if (typeof connector.connect === 'function') {
-              try { api = await connector.connect(TARGET_NETWORK); break; } catch (e) {}
-            } else if (typeof connector.enable === 'function') {
-              try { api = await connector.enable(); break; } catch (e) {}
-            }
+            api = await tryConnect(connector, TARGET_NETWORK);
+            if (api) break;
           }
         }
       }
       if (!api) {
         for (const connector of Object.values(midnight) as any[]) {
-          if (connector && typeof connector.connect === 'function') {
-            try { api = await connector.connect(TARGET_NETWORK); break; } catch (e) {}
-          } else if (connector && typeof connector.enable === 'function') {
-            try { api = await connector.enable(); break; } catch (e) {}
-          }
+          api = await tryConnect(connector, TARGET_NETWORK);
+          if (api) break;
         }
       }
     }
 
     if (!api && mnLace) {
-      if (typeof mnLace.connect === 'function') {
-        try { api = await mnLace.connect(TARGET_NETWORK); } catch (e) {}
-      } else if (typeof mnLace.enable === 'function') {
-        try { api = await mnLace.enable(); } catch (e) {}
-      }
+      api = await tryConnect(mnLace, TARGET_NETWORK);
     }
 
-    let realAddr = '';
-    if (api) {
-      try {
-        const raw =
-          (await api.getUnshieldedAddress?.()) ??
-          (await api.getAddress?.()) ??
-          (await api.getAddresses?.())?.[0] ??
-          (await api.getShieldedAddresses?.()) ??
-          api.state?.()?.address ??
-          api.account?.address ??
-          null;
-        console.log('[useMidnight] raw address from Lace wallet:', raw);
-        realAddr = extractAddr(raw);
-      } catch (e) { console.warn('[useMidnight] Lace address read error:', e); }
-    }
+    let realAddr = await getWalletAddressFromApi(api);
 
     if (!realAddr) {
       realAddr = localStorage.getItem(LACE_ADDRESS_KEY) || '';
@@ -355,21 +377,24 @@ export function useMidnight(): MidnightHook {
       setWalletState({
         status: 'error',
         message:
-          'Midnight Lace wallet extension was not detected in your browser. Please install Midnight Lace or try the Demo Wallet option below.',
+          'Midnight Lace wallet extension was not detected in your browser. Please install Midnight Lace or check if it is unlocked.',
       });
       return;
     }
 
-    if (!realAddr || !realAddr.startsWith('mn_addr_')) {
+    if (!realAddr || !isValidMidnightAddress(realAddr)) {
       setWalletState({
         status: 'error',
         message:
-          'Midnight Lace wallet connected but your address could not be verified. Make sure Midnight Lace is unlocked and set to the correct network.',
+          'Midnight Lace wallet connected but your address could not be verified. Make sure Midnight Lace is unlocked and set to Preprod network.',
       });
       return;
     }
 
-    try { localStorage.setItem(LACE_ADDRESS_KEY, realAddr); } catch {}
+    try {
+      localStorage.setItem(LACE_ADDRESS_KEY, realAddr);
+      localStorage.setItem(LAST_WALLET_KEY, 'lace');
+    } catch {}
 
     const walletApi = api || createFallbackWalletApi(realAddr, 'Lace Wallet');
     const { formatted, raw } = await fetchWalletBalance(walletApi);
@@ -387,8 +412,22 @@ export function useMidnight(): MidnightHook {
     });
   }, []);
 
+  // Auto reconnect if previously connected
+  useEffect(() => {
+    const lastWallet = localStorage.getItem(LAST_WALLET_KEY) as WalletType | null;
+    if (lastWallet && (lastWallet === 'lace' || lastWallet === '1am')) {
+      const storedAddr = localStorage.getItem(lastWallet === 'lace' ? LACE_ADDRESS_KEY : ONEAM_ADDRESS_KEY);
+      if (storedAddr && isValidMidnightAddress(storedAddr)) {
+        connect(lastWallet).catch((err) => {
+          console.warn('[useMidnight] auto-connect skipped:', err);
+        });
+      }
+    }
+  }, [connect]);
+
   const disconnect = useCallback(() => {
     apiRef.current = null;
+    try { localStorage.removeItem(LAST_WALLET_KEY); } catch {}
     setWalletState({ status: 'idle' });
   }, []);
 
@@ -406,4 +445,3 @@ export function useMidnight(): MidnightHook {
     is1amAvailable,
   };
 }
-

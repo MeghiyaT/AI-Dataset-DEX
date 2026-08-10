@@ -148,10 +148,10 @@ function App() {
             )}
           </nav>
 
-          {/* Right: Preview Badge & Wallet */}
+          {/* Right: Network Badge & Wallet */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
             <span className="badge badge-purple" style={{ fontSize: '0.7rem' }}>
-              <span className="pulse-dot" /> Preview
+              <span className="pulse-dot" /> {midnightHook.targetNetwork ? midnightHook.targetNetwork.charAt(0).toUpperCase() + midnightHook.targetNetwork.slice(1) : 'Preprod'}
             </span>
             {/* Pass custom disconnect handler to gracefully exit profile page */}
             <WalletConnect hook={{ ...midnightHook, disconnect: handleDisconnect }} />
