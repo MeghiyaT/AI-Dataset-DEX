@@ -17,8 +17,8 @@
     "clean": "rm -rf contracts/managed .midnight-state.json .midnight-wallet-state",
     "test": "vitest run",
     "test:e2e": "tsx scripts/e2e-check.ts",
-    "frontend:dev": "cd frontend && VITE_NETWORK=preview npm run dev",
-    "frontend:build": "cd frontend && VITE_NETWORK=preview npm run build"
+    "frontend:dev": "cd frontend && VITE_NETWORK=preprod npm run dev",
+    "frontend:build": "cd frontend && VITE_NETWORK=preprod npm run build"
   },
   "dependencies": {
     "@midnight-ntwrk/compact-runtime": "0.16.0",

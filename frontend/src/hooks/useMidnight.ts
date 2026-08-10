@@ -7,7 +7,7 @@
 
 import { useState, useCallback, useRef, useEffect } from 'react';
 
-const TARGET_NETWORK = (import.meta.env.VITE_NETWORK as string) || 'preview';
+const TARGET_NETWORK = (import.meta.env.VITE_NETWORK as string) || 'preprod';
 
 const LACE_ADDRESS_KEY = 'datavault_lace_address';
 const ONEAM_ADDRESS_KEY = 'datavault_1am_address';

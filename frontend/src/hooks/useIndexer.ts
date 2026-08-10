@@ -11,7 +11,7 @@ import { useState, useEffect, useCallback } from 'react';
 
 const INDEXER_URL =
   (import.meta.env.VITE_INDEXER_URL as string) ||
-  'https://indexer.preview.midnight.network/api/v4/graphql';
+  'https://indexer.preprod.midnight.network/api/v4/graphql';
 
 const CONTRACT_ADDRESS = (import.meta.env.VITE_CONTRACT_ADDRESS as string) || '';
 

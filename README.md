@@ -176,28 +176,28 @@ cp frontend/.env.example frontend/.env.local
 ```
 
 ```env
-VITE_NETWORK=preview
-VITE_CONTRACT_ADDRESS=<your deployed contract address>
-VITE_INDEXER_URL=https://indexer.preview.midnight.network/api/v4/graphql
-VITE_INDEXER_WS_URL=wss://indexer.preview.midnight.network/api/v4/graphql/ws
+VITE_NETWORK=preprod
+VITE_CONTRACT_ADDRESS=7def714414d5008a6567f0a8cff655b40e3fe0c08260f7fc1dc2ab139612fe45
+VITE_INDEXER_URL=https://indexer.preprod.midnight.network/api/v4/graphql
+VITE_INDEXER_WS_URL=wss://indexer.preprod.midnight.network/api/v4/graphql/ws
 ```
 
 ---
 
 ## Deployed contracts
 
-| Network | Contract Address |
-|---|---|
-| **Preview** (testnet) | `9d8bb1b1ede579d5c47c5fafdf7d81f8549a3db14b4c6cdee034c3e7697f7592` |
-| **Preprod** (testnet) | `7def714414d5008a6567f0a8cff655b40e3fe0c08260f7fc1dc2ab139612fe45` |
+| Network | Contract Address | Explorer Link |
+|---|---|---|
+| **Preprod** (testnet) | `7def714414d5008a6567f0a8cff655b40e3fe0c08260f7fc1dc2ab139612fe45` | [Preprod Explorer](https://explorer.preprod.midnight.network/) |
+| **Preview** (testnet) | `9d8bb1b1ede579d5c47c5fafdf7d81f8549a3db14b4c6cdee034c3e7697f7592` | [Preview Explorer](https://explorer.preview.midnight.network/) |
 
 ![Successful contract deployment to Preprod network](docs/screenshots/deploy.png)
 
-**Verify the Preview contract on-chain yourself:**
+**Verify the Preprod contract state via Indexer GraphQL:**
 ```bash
-curl -X POST https://indexer.preview.midnight.network/api/v4/graphql \
+curl -X POST https://indexer.preprod.midnight.network/api/v4/graphql \
   -H "Content-Type: application/json" \
-  -d '{"query": "{ contract(address: \"9d8bb1b1ede579d5c47c5fafdf7d81f8549a3db14b4c6cdee034c3e7697f7592\") { address state } }"}'
+  -d '{"query": "{ contractAction(address: \"7def714414d5008a6567f0a8cff655b40e3fe0c08260f7fc1dc2ab139612fe45\") { address } }"}'
 ```
 
 ---
