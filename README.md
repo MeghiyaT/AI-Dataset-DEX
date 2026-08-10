@@ -189,7 +189,9 @@ VITE_INDEXER_WS_URL=wss://indexer.preview.midnight.network/api/v4/graphql/ws
 | Network | Contract Address |
 |---|---|
 | **Preview** (testnet) | `9d8bb1b1ede579d5c47c5fafdf7d81f8549a3db14b4c6cdee034c3e7697f7592` |
-| **Preprod** | *(contract redeploy in progress — address will be updated here)* |
+| **Preprod** (testnet) | `7def714414d5008a6567f0a8cff655b40e3fe0c08260f7fc1dc2ab139612fe45` |
+
+![Successful contract deployment to Preprod network](docs/screenshots/deploy.png)
 
 **Verify the Preview contract on-chain yourself:**
 ```bash

@@ -93,7 +93,13 @@ export async function deploy() {
   console.log('  Syncing with network...');
   console.log('  ℹ  This may take several minutes depending on network size.');
 
+  const syncSub = walletCtx.wallet.state().pipe(Rx.throttleTime(10000)).subscribe((s) => {
+    if (!s.isSynced) {
+      console.log(`  ...syncing in progress (isSynced: ${s.isSynced})`);
+    }
+  });
   const state = await walletCtx.wallet.waitForSyncedState();
+  syncSub.unsubscribe();
   process.stdout.write('\r  ✓ Synced with network.                                      \n');
 
   await persistWalletState(network, walletCtx);

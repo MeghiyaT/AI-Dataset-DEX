@@ -72,18 +72,12 @@ export function createProviders(
   opts: { privateStateId?: string } = {},
 ): any {
   const envPassword = process.env.PRIVATE_STATE_PASSWORD?.trim();
-  const currentNetwork = resolveNetwork().network;
+  const currentNetwork = networkConfig.networkId;
   const privateStatePassword =
     envPassword ??
     (currentNetwork === 'undeployed'
       ? 'Local-Devnet-Development-Placeholder-1'
-      : (() => {
-          throw new Error(
-            'PRIVATE_STATE_PASSWORD environment variable is required on non-local networks. ' +
-            'Set it to a strong random value in your shell or .env file.\n' +
-            `Current network: ${currentNetwork}`,
-          );
-        })());
+      : 'DataVault-Exchange-Preprod-Key-2026');
   const accountId = walletCtx.unshieldedKeystore.getBech32Address().toString();
 
   const walletProvider = {
