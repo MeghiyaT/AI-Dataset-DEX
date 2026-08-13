@@ -13,11 +13,12 @@ import type { WalletState, WalletType } from '../hooks/useMidnight';
 
 import type { UserProfileHook } from '../hooks/useUserProfile';
 import { ProfileDashboard } from './ProfileDashboard';
+import { WalletIcon } from './WalletIcons';
 
 interface Props {
   walletApi: any;
   walletState: WalletState;
-  onConnect: (type: WalletType) => Promise<void>;
+  onConnect: (type: WalletType) => Promise<any>;
   activeSection: NavSection;
   onSelectSection: (sec: NavSection) => void;
   registryState: RegistryState;
@@ -31,6 +32,8 @@ interface Props {
   onIncrementVerified: () => void;
   onToggleArchive?: (datasetId: string) => void;
   onRemoveListing?: (datasetId: string) => void;
+  laceIcon?: string;
+  oneAmIcon?: string;
 }
 
 const FAVORITES_STORAGE_KEY = 'datavault_favorite_dataset_ids';
@@ -62,6 +65,8 @@ export function DatasetExchange({
   profileHook,
   onToggleArchive,
   onRemoveListing,
+  laceIcon,
+  oneAmIcon,
 }: Props) {
   const [inspectModalListing, setInspectModalListing] = useState<DataListing | null>(null);
   const [quickVerifyListing, setQuickVerifyListing] = useState<DataListing | null>(null);
@@ -120,6 +125,8 @@ export function DatasetExchange({
           onToggleArchive={onToggleArchive}
           onRemoveListing={onRemoveListing}
           onSuccess={() => onSelectSection('marketplace')}
+          laceIcon={laceIcon}
+          oneAmIcon={oneAmIcon}
         />
       )}
 
@@ -670,14 +677,18 @@ function RegisterView({
   onToggleArchive,
   onRemoveListing,
   onSuccess,
+  laceIcon,
+  oneAmIcon,
 }: {
   walletApi: any;
   walletState: WalletState;
-  onConnect: (type: WalletType) => Promise<void>;
+  onConnect: (type: WalletType) => Promise<any>;
   onAddListing: (l: DataListing) => void;
   onToggleArchive?: (id: string) => void;
   onRemoveListing?: (id: string) => void;
   onSuccess: () => void;
+  laceIcon?: string;
+  oneAmIcon?: string;
 }) {
   const isConnected = walletState.status === 'connected';
   const isAuthorized = isConnected;
@@ -848,11 +859,21 @@ function RegisterView({
               You cannot register a dataset without connecting an authenticated Midnight wallet. Connect Lace or 1AM to sign and commit dataset fingerprints to the blockchain.
             </p>
             <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
-              <button className="btn btn-primary btn-sm" onClick={() => onConnect('1am')}>
-                🌙 Connect 1AM Wallet
+              <button
+                className="btn btn-primary btn-sm"
+                onClick={() => onConnect('1am')}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}
+              >
+                <WalletIcon type="1am" iconUrl={oneAmIcon} size={18} />
+                <span>Connect 1AM Wallet</span>
               </button>
-              <button className="btn btn-secondary btn-sm" onClick={() => onConnect('lace')}>
-                🦊 Connect Lace Wallet
+              <button
+                className="btn btn-secondary btn-sm"
+                onClick={() => onConnect('lace')}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}
+              >
+                <WalletIcon type="lace" iconUrl={laceIcon} size={18} />
+                <span>Connect Midnight Lace</span>
               </button>
             </div>
           </div>

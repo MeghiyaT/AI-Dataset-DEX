@@ -67,7 +67,7 @@ export function ProfileDashboard({
   // (not the raw address), we do a best-effort match by address substring.
   // In a future version this will use a signed nonce from the wallet.
   const myDatasets = registryState.listings.filter((l) => {
-    const addrShort = walletAddress.replace('mn_addr_preview1', '').slice(0, 20);
+    const addrShort = walletAddress.replace(/^mn_addr(?:_[a-z0-9]+)?1/, '').slice(0, 20);
     return l.providerCommit.includes(addrShort) || l.datasetId.slice(0, 8) === walletAddress.slice(-8);
   });
 

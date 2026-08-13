@@ -1,5 +1,6 @@
 // useMidnight.ts
-// Midnight Wallet Connector — supports Midnight Lace & 1AM browser extensions.
+// Midnight Wallet Connector — supports Midnight Lace & 1AM browser extensions with
+// dynamic CAIP-372 wallet discovery, non-destructive switching, and Preprod faucet support.
 //
 // ─── Privacy Note ────────────────────────────────────────────────────────────
 // Private witnesses (raw dataset slices, provider secret) NEVER enter React state.
@@ -7,11 +8,23 @@
 
 import { useState, useCallback, useRef, useEffect } from 'react';
 
-const TARGET_NETWORK = (import.meta.env.VITE_NETWORK as string) || 'preprod';
+export const TARGET_NETWORK = (import.meta.env.VITE_NETWORK as string) || 'preprod';
 
 const LACE_ADDRESS_KEY = 'datavault_lace_address';
 const ONEAM_ADDRESS_KEY = 'datavault_1am_address';
 const LAST_WALLET_KEY = 'datavault_last_wallet';
+
+export const WALLET_INSTALL_URLS = {
+  lace: 'https://chromewebstore.google.com/detail/lace/gafhhkghbfjjkeiendhlofajokpaflmk',
+  '1am': 'https://1am.xyz',
+};
+
+export function getFaucetUrl(network: string = TARGET_NETWORK): string {
+  const net = (network || '').toLowerCase();
+  if (net === 'preview') return 'https://midnight-tmnight-preview.nethermind.dev/';
+  if (net === 'preprod') return 'https://midnight-tmnight-preprod.nethermind.dev/';
+  return 'https://midnight-tmnight-preprod.nethermind.dev/';
+}
 
 // Safely extract an address string from any shape the wallet API might return.
 function extractAddr(raw: unknown): string {
@@ -60,6 +73,15 @@ function isValidMidnightAddress(addr: string): boolean {
 
 export type WalletType = '1am' | 'lace';
 
+export interface DiscoveredWalletInfo {
+  id: WalletType | string;
+  name: string;
+  icon?: string;
+  rdns?: string;
+  apiVersion?: string;
+  isAvailable: boolean;
+}
+
 export type WalletState =
   | { status: 'idle' }
   | { status: 'connecting' }
@@ -71,18 +93,24 @@ export type WalletState =
       network: string;
       walletType: WalletType;
       connectorName: string;
+      iconUrl?: string;
       api: any;
     }
   | { status: 'error'; message: string };
 
 export interface MidnightHook {
   walletState: WalletState;
-  connect: (type: WalletType) => Promise<void>;
+  connect: (type: WalletType) => Promise<boolean>;
   disconnect: () => void;
   clearError: () => void;
   targetNetwork: string;
+  faucetUrl: string;
   isLaceAvailable: boolean;
   is1amAvailable: boolean;
+  laceIcon?: string;
+  oneAmIcon?: string;
+  switchNotification: string | null;
+  clearSwitchNotification: () => void;
 }
 
 // Safely attempt to connect to a Midnight DApp Connector object
@@ -93,13 +121,13 @@ async function tryConnect(connector: any, network: string): Promise<any> {
       const api = await connector.connect(network);
       if (api) return api;
     } catch (e) {
-      console.warn('[useMidnight] connector.connect(network) warning:', e);
+      console.warn('[useMidnight] connector.connect(network) attempt returned:', e);
     }
     try {
       const api = await connector.connect();
       if (api) return api;
     } catch (e) {
-      console.warn('[useMidnight] connector.connect() warning:', e);
+      console.warn('[useMidnight] connector.connect() attempt returned:', e);
     }
   }
   if (typeof connector.enable === 'function') {
@@ -107,7 +135,7 @@ async function tryConnect(connector: any, network: string): Promise<any> {
       const api = await connector.enable();
       if (api) return api;
     } catch (e) {
-      console.warn('[useMidnight] connector.enable() warning:', e);
+      console.warn('[useMidnight] connector.enable() attempt returned:', e);
     }
   }
   return null;
@@ -220,7 +248,7 @@ async function fetchWalletBalance(api: any): Promise<{ formatted: string; raw: n
   return { formatted: '0.0 tNIGHT', raw: 0 };
 }
 
-// Minimal shim for when stored address is present but window object is temporarily reloaded
+// Minimal fallback API if address is stored but window reloads temporarily
 function createFallbackWalletApi(address: string, name: string) {
   return {
     name,
@@ -232,38 +260,51 @@ function createFallbackWalletApi(address: string, name: string) {
   };
 }
 
-// Explicit, isolated connector lookup for 1AM Wallet
-function get1amConnector(): any {
+// Discovery for 1AM Wallet
+function get1amConnectorInfo(): { connector: any; icon?: string; name: string } | null {
+  if (typeof window === 'undefined') return null;
   const win = window as any;
   const midnight = win.midnight;
   if (midnight && typeof midnight === 'object') {
-    if (midnight['1am']) return midnight['1am'];
-    if (midnight.oneAm) return midnight.oneAm;
-    if (midnight.one_am) return midnight.one_am;
+    if (midnight['1am']) {
+      return { connector: midnight['1am'], icon: midnight['1am'].icon, name: midnight['1am'].name || '1AM Wallet' };
+    }
+    if (midnight.oneAm) {
+      return { connector: midnight.oneAm, icon: midnight.oneAm.icon, name: midnight.oneAm.name || '1AM Wallet' };
+    }
+    if (midnight.one_am) {
+      return { connector: midnight.one_am, icon: midnight.one_am.icon, name: midnight.one_am.name || '1AM Wallet' };
+    }
     for (const [key, connector] of Object.entries(midnight) as [string, any][]) {
       if (connector && typeof connector === 'object') {
         if (
           connector.rdns === 'com.midnight.1am' ||
+          connector.rdns === 'xyz.1am' ||
           connector.name?.toLowerCase().includes('1am') ||
           key.toLowerCase().includes('1am')
         ) {
-          return connector;
+          return { connector, icon: connector.icon, name: connector.name || '1AM Wallet' };
         }
       }
     }
   }
-  if (win.oneAm) return win.oneAm;
-  if (win.oneAM) return win.oneAM;
+  if (win.oneAm) return { connector: win.oneAm, icon: win.oneAm.icon, name: win.oneAm.name || '1AM Wallet' };
+  if (win.oneAM) return { connector: win.oneAM, icon: win.oneAM.icon, name: win.oneAM.name || '1AM Wallet' };
   return null;
 }
 
-// Explicit, isolated connector lookup for Midnight Lace
-function getLaceConnector(): any {
+// Discovery for Midnight Lace
+function getLaceConnectorInfo(): { connector: any; icon?: string; name: string } | null {
+  if (typeof window === 'undefined') return null;
   const win = window as any;
   const midnight = win.midnight;
   if (midnight && typeof midnight === 'object') {
-    if (midnight.mnLace) return midnight.mnLace;
-    if (midnight.lace) return midnight.lace;
+    if (midnight.mnLace) {
+      return { connector: midnight.mnLace, icon: midnight.mnLace.icon, name: midnight.mnLace.name || 'Midnight Lace' };
+    }
+    if (midnight.lace) {
+      return { connector: midnight.lace, icon: midnight.lace.icon, name: midnight.lace.name || 'Midnight Lace' };
+    }
     for (const [key, connector] of Object.entries(midnight) as [string, any][]) {
       if (connector && typeof connector === 'object') {
         if (
@@ -272,13 +313,13 @@ function getLaceConnector(): any {
           key.toLowerCase().includes('lace') ||
           key === 'mnLace'
         ) {
-          return connector;
+          return { connector, icon: connector.icon, name: connector.name || 'Midnight Lace' };
         }
       }
     }
   }
-  if (win.mnLace) return win.mnLace;
-  if (win.cardano?.midnight) return win.cardano.midnight;
+  if (win.mnLace) return { connector: win.mnLace, icon: win.mnLace.icon, name: win.mnLace.name || 'Midnight Lace' };
+  if (win.cardano?.midnight) return { connector: win.cardano.midnight, icon: win.cardano.midnight.icon, name: 'Midnight Lace' };
   return null;
 }
 
@@ -286,84 +327,130 @@ export function useMidnight(): MidnightHook {
   const [walletState, setWalletState] = useState<WalletState>({ status: 'idle' });
   const [isLaceAvailable, setIsLaceAvailable] = useState(false);
   const [is1amAvailable, setIs1amAvailable] = useState(false);
+  const [laceIcon, setLaceIcon] = useState<string | undefined>(undefined);
+  const [oneAmIcon, setOneAmIcon] = useState<string | undefined>(undefined);
+  const [switchNotification, setSwitchNotification] = useState<string | null>(null);
   const apiRef = useRef<any>(null);
 
-  // Detect injected Midnight extensions accurately
+  // Detect injected Midnight extensions
   useEffect(() => {
     const detect = () => {
-      const has1am = !!get1amConnector();
-      const hasLace = !!getLaceConnector();
+      const info1am = get1amConnectorInfo();
+      const infoLace = getLaceConnectorInfo();
 
-      setIs1amAvailable(has1am);
-      setIsLaceAvailable(hasLace);
+      setIs1amAvailable(!!info1am);
+      setIsLaceAvailable(!!infoLace);
+
+      if (info1am?.icon) setOneAmIcon(info1am.icon);
+      if (infoLace?.icon) setLaceIcon(infoLace.icon);
     };
 
     detect();
     const t1 = setTimeout(detect, 300);
     const t2 = setTimeout(detect, 1000);
+    const t3 = setTimeout(detect, 2500);
     return () => {
       clearTimeout(t1);
       clearTimeout(t2);
+      clearTimeout(t3);
     };
   }, []);
 
-  const connect = useCallback(async (type: WalletType = '1am') => {
-    // Cleanly clear previous session before connecting
-    apiRef.current = null;
-    setWalletState({ status: 'connecting' });
-
-    const connector = type === '1am' ? get1amConnector() : getLaceConnector();
-    const walletLabel = type === '1am' ? '1AM Wallet' : 'Midnight Lace';
-
-    let api: any = null;
-    if (connector) {
-      api = await tryConnect(connector, TARGET_NETWORK);
-    }
-
-    let realAddr = await getWalletAddressFromApi(api);
-
-    if (!api && !realAddr) {
-      const errorMsg =
-        type === '1am'
-          ? '1AM Wallet extension was not detected in your browser. Please install 1AM or ensure it is enabled.'
-          : 'Midnight Lace wallet extension was not detected in your browser. Please install Midnight Lace or check that it is enabled and unlocked.';
-      setWalletState({ status: 'error', message: errorMsg });
-      return;
-    }
-
-    if (!realAddr || !isValidMidnightAddress(realAddr)) {
-      setWalletState({
-        status: 'error',
-        message: `${walletLabel} connected, but the wallet address could not be retrieved. Please unlock ${walletLabel} and authorize connection.`,
-      });
-      return;
-    }
-
-    // Detect if wallet is on Preview, Preprod, etc.
-    const activeNetwork = await extractWalletNetwork(api, realAddr);
-
-    try {
-      localStorage.setItem(type === '1am' ? ONEAM_ADDRESS_KEY : LACE_ADDRESS_KEY, realAddr);
-      localStorage.setItem(LAST_WALLET_KEY, type);
-    } catch {}
-
-    const walletApi = api || createFallbackWalletApi(realAddr, walletLabel);
-    const { formatted, raw } = await fetchWalletBalance(walletApi);
-    apiRef.current = walletApi;
-
-    setWalletState({
-      status: 'connected',
-      address: realAddr,
-      balance: formatted,
-      rawBalance: raw,
-      network: activeNetwork,
-      walletType: type,
-      connectorName: walletLabel,
-      api: walletApi,
-    });
+  const clearSwitchNotification = useCallback(() => {
+    setSwitchNotification(null);
   }, []);
 
-  // Auto reconnect if previously connected
+  const connect = useCallback(async (type: WalletType = '1am'): Promise<boolean> => {
+    const info = type === '1am' ? get1amConnectorInfo() : getLaceConnectorInfo();
+    const walletLabel = type === '1am' ? '1AM Wallet' : 'Midnight Lace';
+    const isCurrentlyConnected = walletState.status === 'connected';
+
+    // If switching wallet while already connected, perform non-destructive switch:
+    if (isCurrentlyConnected) {
+      if (!info?.connector) {
+        setSwitchNotification(
+          `${walletLabel} extension is not detected in your browser. Install ${walletLabel} to switch.`
+        );
+        return false;
+      }
+    } else {
+      setWalletState({ status: 'connecting' });
+    }
+
+    try {
+      let api: any = null;
+      if (info?.connector) {
+        api = await tryConnect(info.connector, TARGET_NETWORK);
+      }
+
+      const realAddr = await getWalletAddressFromApi(api);
+
+      if (!api && !realAddr) {
+        const errorMsg =
+          type === '1am'
+            ? '1AM Wallet extension was not detected. Please ensure 1AM is installed and unlocked.'
+            : 'Midnight Lace wallet extension was not detected. Please ensure Midnight Lace is installed and unlocked.';
+
+        if (isCurrentlyConnected) {
+          setSwitchNotification(errorMsg);
+          return false;
+        } else {
+          setWalletState({ status: 'error', message: errorMsg });
+          return false;
+        }
+      }
+
+      if (!realAddr || !isValidMidnightAddress(realAddr)) {
+        const errorMsg = `${walletLabel} connected, but the wallet address could not be retrieved. Please unlock ${walletLabel} and approve connection.`;
+        if (isCurrentlyConnected) {
+          setSwitchNotification(errorMsg);
+          return false;
+        } else {
+          setWalletState({ status: 'error', message: errorMsg });
+          return false;
+        }
+      }
+
+      // Success: extract active network & balance
+      const activeNetwork = await extractWalletNetwork(api, realAddr);
+
+      try {
+        localStorage.setItem(type === '1am' ? ONEAM_ADDRESS_KEY : LACE_ADDRESS_KEY, realAddr);
+        localStorage.setItem(LAST_WALLET_KEY, type);
+      } catch {}
+
+      const walletApi = api || createFallbackWalletApi(realAddr, walletLabel);
+      const { formatted, raw } = await fetchWalletBalance(walletApi);
+      apiRef.current = walletApi;
+
+      setSwitchNotification(null);
+      setWalletState({
+        status: 'connected',
+        address: realAddr,
+        balance: formatted,
+        rawBalance: raw,
+        network: activeNetwork,
+        walletType: type,
+        connectorName: info?.name || walletLabel,
+        iconUrl: info?.icon,
+        api: walletApi,
+      });
+
+      return true;
+    } catch (err: any) {
+      console.error(`[useMidnight] Error connecting to ${walletLabel}:`, err);
+      const msg = err?.message || `Failed to connect to ${walletLabel}.`;
+      if (isCurrentlyConnected) {
+        setSwitchNotification(msg);
+        return false;
+      } else {
+        setWalletState({ status: 'error', message: msg });
+        return false;
+      }
+    }
+  }, [walletState.status]);
+
+  // Auto reconnect on page mount
   useEffect(() => {
     const lastWallet = localStorage.getItem(LAST_WALLET_KEY) as WalletType | null;
     if (lastWallet && (lastWallet === 'lace' || lastWallet === '1am')) {
@@ -374,19 +461,24 @@ export function useMidnight(): MidnightHook {
         });
       }
     }
-  }, [connect]);
+  }, []);
 
   const disconnect = useCallback(() => {
     apiRef.current = null;
     try {
       localStorage.removeItem(LAST_WALLET_KEY);
     } catch {}
+    setSwitchNotification(null);
     setWalletState({ status: 'idle' });
   }, []);
 
   const clearError = useCallback(() => {
+    setSwitchNotification(null);
     setWalletState({ status: 'idle' });
   }, []);
+
+  const activeNetwork = walletState.status === 'connected' ? walletState.network : TARGET_NETWORK;
+  const faucetUrl = getFaucetUrl(activeNetwork);
 
   return {
     walletState,
@@ -394,8 +486,12 @@ export function useMidnight(): MidnightHook {
     disconnect,
     clearError,
     targetNetwork: TARGET_NETWORK,
+    faucetUrl,
     isLaceAvailable,
     is1amAvailable,
+    laceIcon,
+    oneAmIcon,
+    switchNotification,
+    clearSwitchNotification,
   };
 }
-
