@@ -43,10 +43,14 @@ function getSavedFavorites(): string[] {
     const raw = localStorage.getItem(FAVORITES_STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) return parsed;
+      if (Array.isArray(parsed)) {
+        return parsed.filter(
+          (id) => typeof id === 'string' && id !== '8f6123f8590a6ef0f07579e3ca6e2e0096f694d46a3f3c45dad5b77687fb4ca5'
+        );
+      }
     }
   } catch {}
-  return ['8f6123f8590a6ef0f07579e3ca6e2e0096f694d46a3f3c45dad5b77687fb4ca5'];
+  return [];
 }
 
 export function DatasetExchange({
@@ -438,6 +442,11 @@ function MarketplaceView({
   const [selectedCat, setSelectedCat] = useState('All');
   const [search, setSearch] = useState('');
 
+  const favoritesCount = useMemo(
+    () => listings.filter((l) => favorites.includes(l.datasetId)).length,
+    [listings, favorites]
+  );
+
   const filtered = useMemo(() => {
     const standardSet = new Set(['Healthcare AI', 'LLM Reasoning', 'Financial AI', 'Computer Vision']);
 
@@ -489,6 +498,7 @@ function MarketplaceView({
         <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', alignItems: 'center' }}>
           {CURATED_CATEGORIES.map((cat) => {
             const isFavCat = cat === '★ Favorites';
+            const label = isFavCat ? (favoritesCount > 0 ? `★ Favorites (${favoritesCount})` : '★ Favorites') : cat;
             return (
               <button
                 key={cat}
@@ -499,7 +509,7 @@ function MarketplaceView({
                   color: isFavCat && selectedCat !== cat ? '#facc15' : undefined,
                 }}
               >
-                {isFavCat ? `★ Favorites (${favorites.length})` : cat}
+                {label}
               </button>
             );
           })}
@@ -541,17 +551,28 @@ function MarketplaceView({
         <div className="card" style={{ textAlign: 'center', padding: '3.5rem 1.5rem' }}>
           <div style={{ fontSize: '2.5rem', marginBottom: '1rem' }}>{selectedCat === '★ Favorites' ? '⭐' : '🛡️'}</div>
           <h3 style={{ marginBottom: '0.5rem' }}>
-            {selectedCat === '★ Favorites' ? 'No favorites saved yet' : 'No datasets found'}
+            {selectedCat === '★ Favorites'
+              ? (search ? 'No matching favorites' : 'No favorites saved yet')
+              : 'No datasets found'}
           </h3>
           <p style={{ maxWidth: 460, margin: '0 auto 1.5rem', fontSize: '0.88rem' }}>
             {selectedCat === '★ Favorites'
-              ? 'Click the ☆ Save button on any dataset card to add it to your favorites list for instant verification and tracking.'
+              ? (search
+                  ? `No favorite datasets match "${search}". Try clearing your search filter.`
+                  : 'Click the ☆ Save button on any dataset card to add it to your favorites list for instant verification and tracking.')
               : 'Try a different search term or register your own AI dataset.'}
           </p>
           {selectedCat === '★ Favorites' ? (
-            <button className="btn btn-secondary" onClick={() => setSelectedCat('All')}>
-              Browse All Datasets
-            </button>
+            <div style={{ display: 'flex', gap: '0.6rem', justifyContent: 'center', flexWrap: 'wrap' }}>
+              {search && (
+                <button className="btn btn-secondary" onClick={() => setSearch('')}>
+                  Clear Search
+                </button>
+              )}
+              <button className="btn btn-primary" onClick={() => setSelectedCat('All')}>
+                Browse All Datasets
+              </button>
+            </div>
           ) : (
             <button className="btn btn-primary" onClick={onGoRegister}>
               Register New Dataset
@@ -1208,6 +1229,11 @@ function VerifierView({
   const activeListing = listings.find((l) => l.datasetId === selectedId) || listings[0];
   const isActiveFav = activeListing ? favorites.includes(activeListing.datasetId) : false;
 
+  const selectorFavoritesCount = useMemo(
+    () => listings.filter((l) => favorites.includes(l.datasetId)).length,
+    [listings, favorites]
+  );
+
   const filteredSelectorListings = useMemo(() => {
     return listings.filter((l) => {
       let matchCat = true;
@@ -1469,6 +1495,7 @@ function VerifierView({
               <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap', marginBottom: '1rem' }}>
                 {['All', '★ Favorites', 'Healthcare AI', 'LLM Reasoning', 'Financial AI', 'Computer Vision'].map((cat) => {
                   const isFavPill = cat === '★ Favorites';
+                  const label = isFavPill ? (selectorFavoritesCount > 0 ? `★ Favorites (${selectorFavoritesCount})` : '★ Favorites') : cat;
                   return (
                     <button
                       key={cat}
@@ -1482,54 +1509,60 @@ function VerifierView({
                         color: isFavPill && selectorCat !== cat ? '#facc15' : undefined,
                       }}
                     >
-                      {isFavPill ? `★ Favorites (${favorites.length})` : cat}
+                      {label}
                     </button>
                   );
                 })}
               </div>
 
               {/* Dataset Cards List */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '0.75rem', maxHeight: 280, overflowY: 'auto' }}>
-                {filteredSelectorListings.map((item) => {
-                  const isSelected = item.datasetId === selectedId;
-                  const isItemFav = favorites.includes(item.datasetId);
-                  return (
-                    <div
-                      key={item.datasetId}
-                      onClick={() => {
-                        setSelectedId(item.datasetId);
-                        setShowSelector(false);
-                        setResult(null);
-                        handleClearFile();
-                      }}
-                      style={{
-                        background: isSelected ? 'rgba(6, 182, 212, 0.12)' : 'rgba(255, 255, 255, 0.03)',
-                        border: `1px solid ${isSelected ? 'var(--cyan-light)' : 'rgba(255, 255, 255, 0.08)'}`,
-                        borderRadius: 'var(--radius-sm)',
-                        padding: '0.85rem',
-                        cursor: 'pointer',
-                        transition: 'all 0.15s ease',
-                      }}
-                    >
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.3rem' }}>
-                        <div style={{ display: 'flex', gap: '0.3rem', alignItems: 'center' }}>
-                          <span className="badge badge-purple" style={{ fontSize: '0.65rem' }}>{item.category || 'AI'}</span>
-                          {isItemFav && <span style={{ color: '#facc15', fontSize: '0.75rem' }}>★</span>}
+              {filteredSelectorListings.length === 0 ? (
+                <div style={{ padding: '2rem 1rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.84rem' }}>
+                  {selectorCat === '★ Favorites' ? '⭐ No favorite datasets saved yet.' : 'No matching datasets found.'}
+                </div>
+              ) : (
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '0.75rem', maxHeight: 280, overflowY: 'auto' }}>
+                  {filteredSelectorListings.map((item) => {
+                    const isSelected = item.datasetId === selectedId;
+                    const isItemFav = favorites.includes(item.datasetId);
+                    return (
+                      <div
+                        key={item.datasetId}
+                        onClick={() => {
+                          setSelectedId(item.datasetId);
+                          setShowSelector(false);
+                          setResult(null);
+                          handleClearFile();
+                        }}
+                        style={{
+                          background: isSelected ? 'rgba(6, 182, 212, 0.12)' : 'rgba(255, 255, 255, 0.03)',
+                          border: `1px solid ${isSelected ? 'var(--cyan-light)' : 'rgba(255, 255, 255, 0.08)'}`,
+                          borderRadius: 'var(--radius-sm)',
+                          padding: '0.85rem',
+                          cursor: 'pointer',
+                          transition: 'all 0.15s ease',
+                        }}
+                      >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.3rem' }}>
+                          <div style={{ display: 'flex', gap: '0.3rem', alignItems: 'center' }}>
+                            <span className="badge badge-purple" style={{ fontSize: '0.65rem' }}>{item.category || 'AI'}</span>
+                            {isItemFav && <span style={{ color: '#facc15', fontSize: '0.75rem' }}>★</span>}
+                          </div>
+                          {isSelected && (
+                            <span className="badge badge-green" style={{ fontSize: '0.65rem' }}>✓ Selected</span>
+                          )}
                         </div>
-                        {isSelected && (
-                          <span className="badge badge-green" style={{ fontSize: '0.65rem' }}>✓ Selected</span>
-                        )}
+                        <div style={{ fontWeight: 600, color: '#fff', fontSize: '0.86rem', marginBottom: '0.25rem', lineHeight: 1.3 }}>
+                          {item.datasetName}
+                        </div>
+                        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+                          {item.license} • {formatBytes(item.datasetSize)}
+                        </div>
                       </div>
-                      <div style={{ fontWeight: 600, color: '#fff', fontSize: '0.86rem', marginBottom: '0.25rem', lineHeight: 1.3 }}>
-                        {item.datasetName}
-                      </div>
-                      <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-                        {item.license} • {formatBytes(item.datasetSize)}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           )}
         </div>
