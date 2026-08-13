@@ -150,8 +150,16 @@ function App() {
 
           {/* Right: Network Badge & Wallet */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-            <span className="badge badge-purple" style={{ fontSize: '0.7rem' }}>
-              <span className="pulse-dot" /> {midnightHook.targetNetwork ? midnightHook.targetNetwork.charAt(0).toUpperCase() + midnightHook.targetNetwork.slice(1) : 'Preprod'}
+            <span
+              className={`badge ${midnightHook.walletState.status === 'connected' && midnightHook.walletState.network === 'preview' ? 'badge-cyan' : 'badge-purple'}`}
+              style={{ fontSize: '0.7rem' }}
+            >
+              <span className="pulse-dot" />{' '}
+              {midnightHook.walletState.status === 'connected'
+                ? midnightHook.walletState.network.charAt(0).toUpperCase() + midnightHook.walletState.network.slice(1)
+                : midnightHook.targetNetwork
+                ? midnightHook.targetNetwork.charAt(0).toUpperCase() + midnightHook.targetNetwork.slice(1)
+                : 'Preprod'}
             </span>
             {/* Pass custom disconnect handler to gracefully exit profile page */}
             <WalletConnect hook={{ ...midnightHook, disconnect: handleDisconnect }} />

@@ -192,8 +192,28 @@ export function WalletConnect({ hook }: Props) {
             >
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
                 <span className="badge badge-purple">{walletState.connectorName}</span>
-                <span className="badge badge-cyan">{targetNetwork.toUpperCase()}</span>
+                <span className={`badge ${walletState.network === 'preview' ? 'badge-cyan' : 'badge-emerald'}`}>
+                  {walletState.network.toUpperCase()}
+                </span>
               </div>
+
+              {/* Notice if wallet network differs from target network */}
+              {walletState.network !== targetNetwork && (
+                <div
+                  style={{
+                    background: 'rgba(6, 182, 212, 0.1)',
+                    border: '1px solid rgba(6, 182, 212, 0.3)',
+                    borderRadius: 'var(--radius-sm)',
+                    padding: '0.5rem 0.65rem',
+                    fontSize: '0.72rem',
+                    color: 'var(--cyan-light)',
+                    marginBottom: '0.75rem',
+                    lineHeight: 1.4,
+                  }}
+                >
+                  ℹ️ Wallet extension is on <strong>{walletState.network.toUpperCase()}</strong> network. Balance & addresses reflect this network.
+                </div>
+              )}
 
               <div style={{ marginBottom: '0.85rem' }}>
                 <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: '0.2rem' }}>YOUR ADDRESS</div>
@@ -220,14 +240,41 @@ export function WalletConnect({ hook }: Props) {
                 </div>
               </div>
 
+              {/* Direct Switch Wallet Action */}
+              <div style={{ marginBottom: '0.65rem' }}>
+                {walletState.walletType === '1am' ? (
+                  <button
+                    className="btn btn-secondary btn-sm"
+                    onClick={() => {
+                      setShowMenu(false);
+                      connect('lace');
+                    }}
+                    style={{ width: '100%', justifyContent: 'center', fontSize: '0.76rem', gap: '0.4rem' }}
+                  >
+                    <span>🦊</span> Switch to Midnight Lace
+                  </button>
+                ) : (
+                  <button
+                    className="btn btn-secondary btn-sm"
+                    onClick={() => {
+                      setShowMenu(false);
+                      connect('1am');
+                    }}
+                    style={{ width: '100%', justifyContent: 'center', fontSize: '0.76rem', gap: '0.4rem' }}
+                  >
+                    <span>🌙</span> Switch to 1AM Wallet
+                  </button>
+                )}
+              </div>
+
               {/* Faucet link for testnet */}
-              <div style={{ marginBottom: '0.85rem' }}>
+              <div style={{ marginBottom: '0.75rem' }}>
                 <a
                   href="https://midnight-tmnight-preview.nethermind.dev/"
                   target="_blank"
                   rel="noreferrer"
-                  className="btn btn-secondary btn-sm"
-                  style={{ width: '100%', justifyContent: 'center', fontSize: '0.76rem', textDecoration: 'none' }}
+                  className="btn btn-ghost btn-sm"
+                  style={{ width: '100%', justifyContent: 'center', fontSize: '0.74rem', textDecoration: 'none', color: 'var(--emerald-light)' }}
                 >
                   🚰 Get Free Test Tokens (Faucet ↗)
                 </a>
@@ -239,9 +286,9 @@ export function WalletConnect({ hook }: Props) {
                   disconnect();
                   setShowMenu(false);
                 }}
-                style={{ width: '100%', color: 'var(--rose)', fontSize: '0.78rem' }}
+                style={{ width: '100%', color: 'var(--rose)', fontSize: '0.78rem', borderTop: '1px solid var(--border-subtle)', paddingTop: '0.5rem' }}
               >
-                Disconnect
+                Disconnect Wallet
               </button>
             </div>
           )}
