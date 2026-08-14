@@ -4,6 +4,7 @@
 //    datasetSlices) as in-memory, call-scope values
 //  - assembles the providers bundle used by deploy and CLI flows.
 
+import * as crypto from 'node:crypto';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -72,13 +73,13 @@ export function createProviders(
   opts: { privateStateId?: string } = {},
 ): any {
   const envPassword = process.env.PRIVATE_STATE_PASSWORD?.trim();
-  const currentNetwork = networkConfig.networkId;
-  const privateStatePassword =
-    envPassword ??
-    (currentNetwork === 'undeployed'
-      ? 'Local-Devnet-Development-Placeholder-1'
-      : 'DataVault-Exchange-Preprod-Key-2026');
   const accountId = walletCtx.unshieldedKeystore.getBech32Address().toString();
+  const derivedHex = crypto
+    .createHash('sha256')
+    .update(`datavault:privatestate:${networkConfig.networkId}:${accountId}:${walletCtx.dustSecretKey}`)
+    .digest('hex');
+  const derivedFallbackPassword = `DV_Zk!${derivedHex.slice(0, 32)}$A1`;
+  const privateStatePassword = envPassword || derivedFallbackPassword;
 
   const walletProvider = {
     getCoinPublicKey: () => walletCtx.shieldedSecretKeys.coinPublicKey,

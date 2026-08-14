@@ -6,7 +6,11 @@ contracts/managed/
 
 # Wallet secrets — NEVER commit
 .midnight-state.json
+.midnight-state*.json
 .midnight-wallet-state/
+*.leveldb/
+midnight-level-db/
+datavault-state*/
 *.env.local
 .env.local
 
