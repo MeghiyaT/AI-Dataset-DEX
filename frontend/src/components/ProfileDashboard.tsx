@@ -62,13 +62,12 @@ export function ProfileDashboard({
 
   const { profile, transactions, updateProfile } = profileHook;
 
-  // "My Datasets" = all listings where providerCommit can be correlated with
-  // the wallet address. Since providerCommit is a hash of the provider secret
-  // (not the raw address), we do a best-effort match by address substring.
-  // In a future version this will use a signed nonce from the wallet.
+  // "My Datasets" = all listings registered by or associated with the connected wallet address
   const myDatasets = registryState.listings.filter((l) => {
-    const addrShort = walletAddress.replace(/^mn_addr(?:_[a-z0-9]+)?1/, '').slice(0, 20);
-    return l.providerCommit.includes(addrShort) || l.datasetId.slice(0, 8) === walletAddress.slice(-8);
+    if (!walletAddress) return false;
+    const cleanAddr = walletAddress.trim().toLowerCase();
+    const cleanProvider = (l.providerCommit || '').trim().toLowerCase();
+    return cleanProvider === cleanAddr || cleanProvider === cleanAddr.replace(/^mn_addr(?:_[a-z0-9]+)?1/, '');
   });
 
   const badge = reputationBadge(myDatasets, transactions);
@@ -198,6 +197,7 @@ export function ProfileDashboard({
               {/* Reputation Badge */}
               <div
                 className="reputation-badge"
+                title="Session reputation calculated from verified proofs and datasets registered by this wallet."
                 style={{
                   display: 'inline-flex',
                   alignItems: 'center',

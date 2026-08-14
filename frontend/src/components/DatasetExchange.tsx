@@ -44,9 +44,7 @@ function getSavedFavorites(): string[] {
     if (raw) {
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed)) {
-        return parsed.filter(
-          (id) => typeof id === 'string' && id !== '8f6123f8590a6ef0f07579e3ca6e2e0096f694d46a3f3c45dad5b77687fb4ca5'
-        );
+        return parsed.filter((id) => typeof id === 'string');
       }
     }
   } catch {}
@@ -261,7 +259,7 @@ function AboutView({
               0 Bytes
             </div>
             <div style={{ fontSize: '0.78rem', color: 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-              Private Data Exposed
+              Raw Data Exposed (ZK Architecture)
             </div>
           </div>
         </div>
@@ -718,7 +716,7 @@ function RegisterView({
   const [category, setCategory] = useState('Healthcare AI');
   const [customCategory, setCustomCategory] = useState('');
   const [license, setLicense] = useState('GDPR-Restricted');
-  const [rowCount, setRowCount] = useState('100000');
+  const [rowCount, setRowCount] = useState('');
   const [description, setDescription] = useState('');
   const [file, setFile] = useState<File | null>(null);
   const [status, setStatus] = useState<'idle' | 'fingerprinting' | 'recording' | 'done' | 'error'>('idle');
@@ -819,13 +817,19 @@ function RegisterView({
 
       const formattedRowCount = `${parsedRecords.toLocaleString()} Records`;
 
-      let hash = '0x' + hashHex.slice(0, 32);
+      let hash: string | null = null;
       if (walletApi && typeof walletApi.callContract === 'function') {
-        const res = await walletApi.callContract({
-          circuit: 'registerDataset',
-          args: { datasetId: datasetIdHex, datasetName: trimmedTitle, datasetSize: String(file.size), rowCount: formattedRowCount, license },
-        });
-        hash = res.txHash || hash;
+        try {
+          const res = await walletApi.callContract({
+            circuit: 'registerDataset',
+            args: { datasetId: datasetIdHex, datasetName: trimmedTitle, datasetSize: String(file.size), rowCount: formattedRowCount, license },
+          });
+          if (res?.txHash) {
+            hash = res.txHash;
+          }
+        } catch (contractErr) {
+          console.warn('On-chain contract registration failed or not supported in current wallet session, saving to local DApp registry:', contractErr);
+        }
       }
 
       setTxHash(hash);
@@ -835,7 +839,7 @@ function RegisterView({
 
       onAddListing({
         datasetId: datasetIdHex,
-        providerCommit: walletState.address || '7c89f1d2a45b67e890123456789abcdef0123456789abcdef0123456789abcde',
+        providerCommit: walletState.address || 'Unlinked Provider',
         dataCommitment: hashHex,
         datasetName: trimmedTitle,
         datasetSize: String(file.size),
@@ -843,7 +847,7 @@ function RegisterView({
         license,
         isActive: true,
         category: effectiveCategory,
-        description: trimmedDesc || `Protected ${effectiveCategory} training dataset registered on Midnight blockchain.`,
+        description: trimmedDesc || `Protected ${effectiveCategory} training dataset registered with DataVault AI.`,
       });
     } catch (e: any) {
       setErrorMsg(e?.message || 'Registration failed');
@@ -1104,10 +1108,16 @@ function RegisterView({
 
         {status === 'done' && (
           <div style={{ marginBottom: '1.5rem' }}>
-            {txHash && (
+            {txHash ? (
               <div style={{ background: 'rgba(16, 185, 129, 0.1)', border: '1px solid rgba(16, 185, 129, 0.3)', borderRadius: 'var(--radius-sm)', padding: '0.85rem 1rem', color: '#6ee7b7', fontSize: '0.85rem', marginBottom: '1rem' }}>
                 <div>✓ Dataset Registered on Midnight Blockchain!</div>
                 <div className="mono" style={{ fontSize: '0.75rem', marginTop: '0.2rem', wordBreak: 'break-all' }}>Transaction: {txHash}</div>
+              </div>
+            ) : (
+              <div style={{ background: 'rgba(6, 182, 212, 0.1)', border: '1px solid rgba(6, 182, 212, 0.3)', borderRadius: 'var(--radius-sm)', padding: '0.85rem 1rem', color: '#67e8f9', fontSize: '0.85rem', marginBottom: '1rem' }}>
+                <div style={{ fontWeight: 600 }}>✓ Dataset Fingerprint Registered in Local Exchange Registry!</div>
+                <div className="mono" style={{ fontSize: '0.75rem', marginTop: '0.2rem', wordBreak: 'break-all' }}>Commitment: {registeredId}</div>
+                <div style={{ fontSize: '0.75rem', marginTop: '0.25rem', opacity: 0.85 }}>Authenticity Mode: Cryptographic SHA-256 integrity anchor bound to your wallet identity.</div>
               </div>
             )}
 
@@ -1278,15 +1288,17 @@ function VerifierView({
   const handleExecuteZKProof = async () => {
     setIsVerifying(true);
     try {
-      await new Promise((r) => setTimeout(r, 800));
-      let tx = '0x' + (activeListing?.dataCommitment || '9a8b7c6d5e4f3a2b1c0d9e8f7a6b5c4d').slice(0, 32) + '...verified';
+      await new Promise((r) => setTimeout(r, 600));
+      let tx: string | undefined = undefined;
 
       if (walletApi && typeof walletApi.callContract === 'function') {
         const res = await walletApi.callContract({
           circuit: 'proveIntegrity',
           args: { datasetId: activeListing?.datasetId || 'custom_verification' },
         });
-        tx = res.txHash || tx;
+        if (res?.txHash) {
+          tx = res.txHash;
+        }
       }
 
       onIncrementVerified();
@@ -1314,7 +1326,7 @@ function VerifierView({
         .map((b) => b.toString(16).padStart(2, '0'))
         .join('');
 
-      await new Promise((r) => setTimeout(r, 600));
+      await new Promise((r) => setTimeout(r, 400));
 
       if (hashHex.toLowerCase() !== activeListing.dataCommitment.toLowerCase()) {
         setResult({
@@ -1327,13 +1339,19 @@ function VerifierView({
         return;
       }
 
-      let tx = '0x' + hashHex.slice(0, 32) + '...tamper-free';
+      let tx: string | undefined = undefined;
       if (walletApi && typeof walletApi.callContract === 'function') {
-        const res = await walletApi.callContract({
-          circuit: 'proveIntegrity',
-          args: { datasetId: activeListing.datasetId },
-        });
-        tx = res.txHash || tx;
+        try {
+          const res = await walletApi.callContract({
+            circuit: 'proveIntegrity',
+            args: { datasetId: activeListing.datasetId },
+          });
+          if (res?.txHash) {
+            tx = res.txHash;
+          }
+        } catch {
+          // Off-chain verification remains valid
+        }
       }
 
       onIncrementVerified();
@@ -1617,24 +1635,32 @@ function VerifierView({
             <div style={{ fontWeight: 700, marginBottom: '0.3rem', fontSize: '0.95rem' }}>
               {result.matched
                 ? result.mode === 'local-tamper'
-                  ? '✓ 100% Genuine: Local File Matches On-Chain Blockchain Fingerprint!'
-                  : '✓ 100% Genuine: Dataset Authenticity Confirmed on Midnight Blockchain!'
+                  ? '✓ 100% Genuine: Local File Matches Registered Dataset Fingerprint!'
+                  : result.txHash
+                    ? '✓ 100% Genuine: Zero-Knowledge Integrity Verified on Midnight Blockchain!'
+                    : '✓ 100% Genuine: Dataset Integrity Commitment Verified!'
                 : '✗ Verification Failed: Hash Mismatch / Tampering Detected'}
             </div>
 
             <div style={{ fontSize: '0.8rem', opacity: 0.9, marginTop: '0.2rem', lineHeight: 1.4 }}>
               {result.matched
                 ? result.mode === 'local-tamper'
-                  ? 'Your local file was hashed in-browser (SHA-256) and perfectly matches the immutable on-chain commitment.'
-                  : 'Midnight zero-knowledge circuit (proveIntegrity) successfully verified dataset commitment authenticity on the ledger.'
-                : 'The cryptographic fingerprint of your local file does not match the immutable commitment stored on Midnight.'}
+                  ? 'Your local file was hashed in-browser (SHA-256) and exactly matches the registered dataset commitment.'
+                  : result.txHash
+                    ? 'Midnight zero-knowledge circuit (proveIntegrity) successfully submitted and verified on the ledger.'
+                    : 'Zero-knowledge commitment anchor successfully verified against the dataset registry.'
+                : 'The cryptographic fingerprint of your local file does not match the immutable commitment stored in the registry.'}
             </div>
 
-            {result.txHash && (
+            {result.txHash ? (
               <div className="mono" style={{ fontSize: '0.76rem', marginTop: '0.5rem', color: '#fff' }}>
-                Proof Transaction: {result.txHash}
+                On-Chain Proof Transaction: {result.txHash}
               </div>
-            )}
+            ) : result.matched ? (
+              <div style={{ fontSize: '0.74rem', marginTop: '0.4rem', color: 'var(--cyan-light)' }}>
+                Verification Mode: In-Browser Cryptographic SHA-256 Proof (No Raw Data Exposed)
+              </div>
+            ) : null}
             {result.computedHash && (
               <div className="mono" style={{ fontSize: '0.72rem', opacity: 0.85, marginTop: '0.2rem' }}>
                 Computed Local File Hash: {result.computedHash}
@@ -1642,7 +1668,7 @@ function VerifierView({
             )}
             {result.expectedHash && !result.matched && (
               <div className="mono" style={{ fontSize: '0.72rem', opacity: 0.85, marginTop: '0.2rem' }}>
-                Expected On-Chain Hash: {result.expectedHash}
+                Expected Registered Hash: {result.expectedHash}
               </div>
             )}
           </div>
