@@ -193,9 +193,9 @@ VITE_INDEXER_WS_URL=wss://indexer.preprod.midnight.network/api/v4/graphql/ws
 
 > [!NOTE]
 > **Why the Legacy Preprod Address is Kept**:
-> The earlier Preprod deployment (`7def714414d5008a6567f0a8cff655b40e3fe0c08260f7fc1dc2ab139612fe45`) was the initial single-deployer testnet deployment. We keep this address documented to preserve the historical audit trail of our earliest on-chain transactions and indexer tests, while all current DApp interactions and multi-user registrations run on the newly upgraded Preview deployment.
+> Due to synchronization bottlenecks and sync issues with the Midnight Preprod network (where historical note scanning across 2M+ blocks caused extended sync delays), the active deployment was migrated to Midnight Preview (`74650cca30e262b2094067196dfcc3f677e6c9974013c39bbcbd919011e8ed3f`). The legacy Preprod address (`7def714414d5008a6567f0a8cff655b40e3fe0c08260f7fc1dc2ab139612fe45`) is retained for historical auditability and reference to earlier testnet transactions.
 
-![Successful contract deployment](docs/screenshots/deploy.png)
+![Successful contract deployment to Preview network](docs/screenshots/deploy.png)
 
 **Verify contract state via Preview Indexer GraphQL:**
 ```bash
