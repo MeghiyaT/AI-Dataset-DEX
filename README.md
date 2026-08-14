@@ -176,10 +176,10 @@ cp frontend/.env.example frontend/.env.local
 ```
 
 ```env
-VITE_NETWORK=preprod
-VITE_CONTRACT_ADDRESS=7def714414d5008a6567f0a8cff655b40e3fe0c08260f7fc1dc2ab139612fe45
-VITE_INDEXER_URL=https://indexer.preprod.midnight.network/api/v4/graphql
-VITE_INDEXER_WS_URL=wss://indexer.preprod.midnight.network/api/v4/graphql/ws
+VITE_NETWORK=preview
+VITE_CONTRACT_ADDRESS=74650cca30e262b2094067196dfcc3f677e6c9974013c39bbcbd919011e8ed3f
+VITE_INDEXER_URL=https://indexer.preview.midnight.network/api/v4/graphql
+VITE_INDEXER_WS_URL=wss://indexer.preview.midnight.network/api/v4/graphql/ws
 ```
 
 ---
@@ -188,8 +188,8 @@ VITE_INDEXER_WS_URL=wss://indexer.preprod.midnight.network/api/v4/graphql/ws
 
 | Network | Status | Contract Address | Explorer Link | Notes |
 |---|---|---|---|---|
-| **Preview** (testnet) | **Active (Latest)** | `74650cca30e262b2094067196dfcc3f677e6c9974013c39bbcbd919011e8ed3f` | [Preview Explorer](https://explorer.preview.midnight.network/) | Multi-user open provider commitment + on-chain category architecture |
-| **Preprod** (testnet) | *Legacy / Outdated* | `7def714414d5008a6567f0a8cff655b40e3fe0c08260f7fc1dc2ab139612fe45` | [Preprod Explorer](https://explorer.preprod.midnight.network/) | Preserved for historical auditability and reference to early transaction records |
+| **Preview** (testnet) | **Active (Latest)** | `74650cca30e262b2094067196dfcc3f677e6c9974013c39bbcbd919011e8ed3f` | [Preview Explorer](https://explorer.preview.midnight.network/contracts/stream/74650cca30e262b2094067196dfcc3f677e6c9974013c39bbcbd919011e8ed3f) | Multi-user open provider commitment + on-chain category architecture |
+| **Preprod** (testnet) | *Legacy / Outdated* | `7def714414d5008a6567f0a8cff655b40e3fe0c08260f7fc1dc2ab139612fe45` | [Preprod Explorer](https://explorer.preprod.midnight.network/contracts/stream/7def714414d5008a6567f0a8cff655b40e3fe0c08260f7fc1dc2ab139612fe45) | Preserved for historical auditability and reference to early transaction records |
 
 > [!NOTE]
 > **Why the Legacy Preprod Address is Kept**:
