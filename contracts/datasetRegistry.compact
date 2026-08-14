@@ -56,6 +56,7 @@ struct DataListing {
   dataCommitment: Bytes<32>;
   // Public metadata (not the data itself).
   datasetName: Opaque<"string">;
+  category: Opaque<"string">;
   datasetSize: Uint<64>;
   rowCount: Opaque<"string">;
   license: Opaque<"string">;
@@ -117,15 +118,15 @@ constructor() {
 
 // Register a dataset. The raw content (slices) enters via the private witness,
 // is hashed to a public integrity anchor, and only that anchor + metadata are
-// ever disclosed.
+// ever disclosed. Open to all authenticated wallet providers.
 export circuit registerDataset(
     datasetId: Bytes<32>,
     datasetName: Opaque<"string">,
+    category: Opaque<"string">,
     datasetSize: Uint<64>,
     rowCount: Opaque<"string">,
     license: Opaque<"string">): [] {
   const _sk = providerSecret();
-  assert(ownerCommit == providerCommitmentOf(_sk), "register: not the owner");
 
   const slices = datasetSlices(datasetId);
   registry.insert(
@@ -134,6 +135,7 @@ export circuit registerDataset(
       providerCommit: disclose(providerCommitmentOf(_sk)),
       dataCommitment: disclose(contentCommitmentOf(slices)),
       datasetName: disclose(datasetName),
+      category: disclose(category),
       datasetSize: disclose(datasetSize),
       rowCount: disclose(rowCount),
       license: disclose(license),
@@ -155,18 +157,23 @@ export circuit proveIntegrity(datasetId: Bytes<32>): [] {
   verifiedCount.increment(1);
 }
 
-// Owner-only flip of a listing's public visibility. Only a Boolean disclosed.
+// Flip of a listing's public visibility. Permitted for the dataset's provider or the deployer.
 export circuit setActive(datasetId: Bytes<32>, active: Boolean): [] {
   const _sk = providerSecret();
-  assert(ownerCommit == providerCommitmentOf(_sk), "setActive: not the owner");
-
+  const callerCommit = disclose(providerCommitmentOf(_sk));
   const current = registry.lookup(disclose(datasetId));
+  assert(
+    current.providerCommit == callerCommit || ownerCommit == callerCommit,
+    "setActive: not authorized"
+  );
+
   registry.insert(
     disclose(datasetId),
     DataListing {
       providerCommit: disclose(current.providerCommit),
       dataCommitment: disclose(current.dataCommitment),
       datasetName: disclose(current.datasetName),
+      category: disclose(current.category),
       datasetSize: disclose(current.datasetSize),
       rowCount: disclose(current.rowCount),
       license: disclose(current.license),

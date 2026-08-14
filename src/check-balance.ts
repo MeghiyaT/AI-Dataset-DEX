@@ -7,6 +7,8 @@ import { pathToFileURL } from 'node:url';
 import { resolveNetwork, getOrCreateWallet } from './network';
 import { createWallet, unshieldedToken } from './wallet';
 
+import * as Rx from 'rxjs';
+
 // @ts-expect-error Required for wallet sync
 globalThis.WebSocket = WebSocket;
 
@@ -21,7 +23,14 @@ export async function checkBalance(): Promise<BalanceReport> {
   const { network, config: networkConfig } = resolveNetwork();
   const { seed } = getOrCreateWallet(network);
   const walletCtx = await createWallet({ network, networkConfig, seed });
-  const state = await walletCtx.wallet.waitForSyncedState();
+  const state = await Rx.firstValueFrom(
+    walletCtx.wallet.state().pipe(
+      Rx.filter((s: any) => {
+        const tn = s?.unshielded?.balances?.[unshieldedToken().raw] ?? 0n;
+        return s.isSynced || tn > 0n;
+      }),
+    ),
+  );
   const address = walletCtx.unshieldedKeystore.getBech32Address();
   const tNight = state.unshielded.balances[unshieldedToken().raw] ?? 0n;
   const dust = state.dust.balance(new Date());

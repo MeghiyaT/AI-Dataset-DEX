@@ -108,7 +108,7 @@ async function fetchRegistryState(): Promise<{ verifiedCount: number; listings: 
       rowCount: e.value?.rowCount ?? '0',
       license: e.value?.license ?? 'CC-BY-4.0',
       isActive: e.value?.isActive ?? true,
-      category: 'General AI',
+      category: e.value?.category ?? 'General AI',
       complianceTag: 'Zero-Knowledge Verified',
     }));
 

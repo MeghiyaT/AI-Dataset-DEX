@@ -111,6 +111,7 @@ export async function listDatasets(ctx: CliContext): Promise<Array<Record<string
     rows.push({
       id: bytes32ToHex(id).slice(0, 16) + '…',
       name: listing.datasetName,
+      category: listing.category,
       size: listing.datasetSize.toString(),
       rows: listing.rowCount,
       license: listing.license,
@@ -131,6 +132,7 @@ export interface RegisterOpts {
   size: string;
   rows: string;
   license: string;
+  category?: string;
   file?: string;
 }
 
@@ -138,8 +140,9 @@ export async function registerDataset(ctx: CliContext, opts: RegisterOpts): Prom
   const id = datasetIdFromLabel(opts.label);
   const content = opts.file ? fs.readFileSync(opts.file) : new Uint8Array();
   ctx.store.set(id, datasetSlicesFromBytes(content));
-  console.log(`Registering "${opts.name}" (id ${bytes32ToHex(id).slice(0, 16)}…)`);
-  const txData = await ctx.found.callTx.registerDataset(id, opts.name, BigInt(opts.size), opts.rows, opts.license);
+  const category = opts.category ?? 'General AI';
+  console.log(`Registering "${opts.name}" (${category}, id ${bytes32ToHex(id).slice(0, 16)}…)`);
+  const txData = await ctx.found.callTx.registerDataset(id, opts.name, category, BigInt(opts.size), opts.rows, opts.license);
   console.log('  ✅ submitted txId', txData.public.txId);
   return txData.public.txId;
 }

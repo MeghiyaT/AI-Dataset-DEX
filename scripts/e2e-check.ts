@@ -51,6 +51,7 @@ async function main(): Promise<void> {
   await registerDataset(ctx, {
     label,
     name: `e2e dataset ${Date.now()}`,
+    category: 'General AI',
     size: '1024',
     rows: '42',
     license: 'CC-BY-4.0',

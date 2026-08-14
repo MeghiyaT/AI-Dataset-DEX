@@ -93,14 +93,23 @@ export async function deploy() {
   console.log('  Syncing with network...');
   console.log('  ℹ  This may take several minutes depending on network size.');
 
-  const syncSub = walletCtx.wallet.state().pipe(Rx.throttleTime(10000)).subscribe((s) => {
-    if (!s.isSynced) {
+  const syncSub = walletCtx.wallet.state().pipe(Rx.throttleTime(5000)).subscribe((s: any) => {
+    const tn = s?.unshielded?.balances?.[unshieldedToken().raw] ?? 0n;
+    const dustBal = s?.dust ? s.dust.balance(new Date()) : 0n;
+    if (tn > 0n && dustBal > 0n) {
+      console.log(`  ✓ Unshielded tNIGHT and DUST ready (tNIGHT: ${tn.toLocaleString()}, DUST: ${dustBal.toLocaleString()})`);
+    } else {
       console.log(`  ...syncing in progress (isSynced: ${s.isSynced})`);
     }
   });
-  const state = await walletCtx.wallet.waitForSyncedState();
+
+  const state = await Rx.firstValueFrom(
+    walletCtx.wallet.state().pipe(
+      Rx.filter((s: any) => s.isSynced),
+    ),
+  );
   syncSub.unsubscribe();
-  process.stdout.write('\r  ✓ Synced with network.                                      \n');
+  process.stdout.write('\r  ✓ Ready to deploy on network.                                      \n');
 
   await persistWalletState(network, walletCtx);
 
@@ -141,31 +150,38 @@ export async function deploy() {
   }
 
   console.log('─── DUST Token Setup ───────────────────────────────────────────\n');
-  const dustState = await Rx.firstValueFrom(walletCtx.wallet.state().pipe(Rx.filter((s) => s.isSynced)));
-  const unregisteredUtxos = dustState.unshielded.availableCoins.filter(
+  const freshState = await Rx.firstValueFrom(
+    walletCtx.wallet.state().pipe(
+      Rx.filter((s: any) => (s?.unshielded?.availableCoins?.length ?? 0) > 0 || (s?.unshielded?.balances?.[unshieldedToken().raw] ?? 0n) > 0n),
+    ),
+  );
+  const unregisteredUtxos = (freshState.unshielded.availableCoins || []).filter(
     (c: any) => !c.meta?.registeredForDustGeneration,
   );
   if (unregisteredUtxos.length > 0) {
     console.log(`  Registering ${unregisteredUtxos.length} NIGHT UTXOs for DUST generation...`);
-    const recipe = await walletCtx.wallet.registerNightUtxosForDustGeneration(
-      unregisteredUtxos,
-      walletCtx.unshieldedKeystore.getPublicKey(),
-      (payload) => walletCtx.unshieldedKeystore.signData(payload),
-    );
-    const finalized = await walletCtx.wallet.finalizeRecipe(recipe);
-    await walletCtx.wallet.submitTransaction(finalized);
+    try {
+      const recipe = await walletCtx.wallet.registerNightUtxosForDustGeneration(
+        unregisteredUtxos,
+        walletCtx.unshieldedKeystore.getPublicKey(),
+        (payload) => walletCtx.unshieldedKeystore.signData(payload),
+      );
+      const finalized = await walletCtx.wallet.finalizeRecipe(recipe);
+      await walletCtx.wallet.submitTransaction(finalized);
+      console.log('  ✓ Registered NIGHT UTXOs for DUST generation.');
+    } catch (e: any) {
+      console.log(`  ℹ DUST registration status: ${e?.message || e}`);
+    }
   }
-  if (dustState.dust.balance(new Date()) === 0n) {
-    console.log('  Waiting for DUST tokens...');
-    await Rx.firstValueFrom(
-      walletCtx.wallet.state().pipe(
-        Rx.throttleTime(5000),
-        Rx.filter((s) => s.isSynced),
-        Rx.filter((s) => s.dust.balance(new Date()) > 0n),
-      ),
-    );
-  }
-  console.log('  DUST tokens ready!\n');
+
+  console.log('  Waiting for active DUST tokens...');
+  await Rx.firstValueFrom(
+    walletCtx.wallet.state().pipe(
+      Rx.throttleTime(2000),
+      Rx.filter((s: any) => s.dust.balance(new Date()) > 0n),
+    ),
+  );
+  console.log('  ✓ DUST tokens active and ready!\n');
 
   console.log('─── Deploy Contract ────────────────────────────────────────────\n');
   console.log('  Checking proof server...');
@@ -178,8 +194,8 @@ export async function deploy() {
   process.stdout.write('\r  Proof server ready!                                 \n');
 
   await initContract(walletCtx);
-  process.stdout.write('  Generating DUST...');
-  await new Promise((r) => setTimeout(r, 6000));
+  process.stdout.write('  Generating & settling on-chain DUST...');
+  await new Promise((r) => setTimeout(r, 15000));
   process.stdout.write(' done.\n');
   console.log('  Deploying contract...\n');
 
@@ -197,32 +213,37 @@ export async function deploy() {
       });
       break;
     } catch (err: any) {
+      let currentErr: any = err;
+      const allErrStrings: string[] = [];
+      while (currentErr) {
+        if (currentErr.message) allErrStrings.push(String(currentErr.message));
+        if (currentErr.name) allErrStrings.push(String(currentErr.name));
+        if (typeof currentErr === 'string') allErrStrings.push(currentErr);
+        currentErr = currentErr.cause;
+      }
+      const fullError = allErrStrings.join(' ') + ' ' + String(err);
       const errMsg = err?.message || err?.toString() || '';
-      const errCause = err?.cause?.message || err?.cause?.toString() || '';
-      const fullError = `${errMsg} ${errCause}`;
 
-      const isDustShortage =
+      const isRetryable =
         fullError.includes('Not enough Dust') ||
         fullError.includes('Insufficient Funds') ||
-        fullError.includes('could not balance dust');
+        fullError.includes('could not balance dust') ||
+        fullError.includes('SubmissionError') ||
+        fullError.includes('1010') ||
+        fullError.includes('170') ||
+        fullError.includes('Invalid Transaction');
 
-      if (!(isDustShortage && attempt === 1)) {
-        console.error(`\n  Attempt ${attempt} error: ${errMsg}`);
-        if (errCause && errCause !== errMsg) console.error(`  Cause: ${errCause}`);
-      }
+      console.error(`\n  Attempt ${attempt} error: ${errMsg}`);
+      if (err?.cause) console.error(`  Cause: ${err.cause?.message || String(err.cause)}`);
 
-      if (isDustShortage) {
-        const currentState = await walletCtx.wallet.waitForSyncedState();
+      if (isRetryable) {
+        const currentState = await Rx.firstValueFrom(walletCtx.wallet.state());
         const dustBalance = currentState.dust.balance(new Date());
         if (attempt < MAX_RETRIES) {
-          if (attempt === 1) {
-            console.log(`  Still generating DUST, retrying in ${RETRY_DELAY_MS / 1000}s...`);
-          } else {
-            console.log(`  ⏳ DUST balance: ${dustBalance.toLocaleString()} (attempt ${attempt}/${MAX_RETRIES}); retrying...`);
-          }
+          console.log(`  ⏳ Retrying deployment in ${RETRY_DELAY_MS / 1000}s (attempt ${attempt}/${MAX_RETRIES}, DUST: ${dustBalance.toLocaleString()})...`);
           await new Promise((r) => setTimeout(r, RETRY_DELAY_MS));
         } else {
-          console.log(`  ❌ Not enough DUST after ${MAX_RETRIES} retries (current: ${dustBalance.toLocaleString()})`);
+          console.log(`  ❌ Deployment unconfirmed after ${MAX_RETRIES} retries`);
           await walletCtx.wallet.stop();
           process.exit(1);
         }
