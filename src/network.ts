@@ -47,9 +47,24 @@ export interface NetworkState {
 export const STATE_FILE_NAME = '.midnight-state.json';
 export const STATE_VERSION = 1 as const;
 
+// ─── Network endpoint defaults ───────────────────────────────────────────────
+//
+// The localhost addresses below are LOCAL DOCKER DEFAULTS only.
+// They are intentional for `undeployed` (all services) and for the
+// proof-server on `preview`/`preprod` (which must run locally via
+// `docker compose up proof-server`).
+//
+// Override any endpoint without code changes via environment variables:
+//   MIDNIGHT_INDEXER_URL        → indexer
+//   MIDNIGHT_INDEXER_WS_URL     → indexerWS
+//   MIDNIGHT_NODE_URL           → node
+//   MIDNIGHT_PROOF_SERVER_URL   → proofServer   ← most commonly overridden
+//   MIDNIGHT_FAUCET_URL         → faucet
+// ─────────────────────────────────────────────────────────────────────────────
 export const NETWORK_CONFIGS: Record<NetworkId, NetworkConfig> = {
   undeployed: {
     networkId: 'undeployed',
+    // All services run locally via `docker compose up` (see compose.yml).
     indexer:   'http://127.0.0.1:8088/api/v4/graphql',
     indexerWS: 'ws://127.0.0.1:8088/api/v4/graphql/ws',
     node:      'ws://127.0.0.1:9944',
@@ -62,6 +77,8 @@ export const NETWORK_CONFIGS: Record<NetworkId, NetworkConfig> = {
     indexer:   'https://indexer.preview.midnight.network/api/v4/graphql',
     indexerWS: 'wss://indexer.preview.midnight.network/api/v4/graphql/ws',
     node:      'wss://rpc.preview.midnight.network',
+    // proof-server must run locally: `docker compose up proof-server`
+    // Override with MIDNIGHT_PROOF_SERVER_URL if running it remotely.
     proofServer: 'http://127.0.0.1:6300',
     faucet: 'https://midnight-tmnight-preview.nethermind.dev',
     composeServices: ['proof-server'],
@@ -71,6 +88,8 @@ export const NETWORK_CONFIGS: Record<NetworkId, NetworkConfig> = {
     indexer:   'https://indexer.preprod.midnight.network/api/v4/graphql',
     indexerWS: 'wss://indexer.preprod.midnight.network/api/v4/graphql/ws',
     node:      'wss://rpc.preprod.midnight.network',
+    // proof-server must run locally: `docker compose up proof-server`
+    // Override with MIDNIGHT_PROOF_SERVER_URL if running it remotely.
     proofServer: 'http://127.0.0.1:6300',
     faucet: 'https://faucet.preprod.midnight.network',
     composeServices: ['proof-server'],
@@ -203,6 +222,11 @@ export function resolveNetwork(opts: ResolveOptions = {}): ResolveResult {
   return { network, config, source };
 }
 
+/**
+ * Deterministic genesis seed for the `undeployed` (local Docker) network only.
+ * This is a well-known value — it MUST NOT be used on any public network.
+ * A runtime guard in `getOrCreateWallet` enforces this invariant.
+ */
 export const GENESIS_SEED = '0000000000000000000000000000000000000000000000000000000000000001';
 
 // ─── Wallet identity (BIP-39, Lace-compatible) ─────────────────────────────────
@@ -248,6 +272,18 @@ export function getOrCreateWallet(network: NetworkId, opts: SeedOptions = {}): W
 
   const envSeed = env.MIDNIGHT_WALLET_SEED;
   const envMnemonic = env.MIDNIGHT_WALLET_MNEMONIC;
+
+  // Safety invariant: the genesis seed is a well-known value and must never
+  // be used on a public network where real funds could be at risk.
+  if (envSeed) {
+    const trimmedEnvSeed = envSeed.trim().replace(/^0x/i, '');
+    if (trimmedEnvSeed === GENESIS_SEED) {
+      throw new Error(
+        `MIDNIGHT_WALLET_SEED matches the public GENESIS_SEED — this seed is only safe on the 'undeployed' local network.`,
+      );
+    }
+  }
+
   if (envSeed && envMnemonic) {
     throw new Error(
       'Both MIDNIGHT_WALLET_SEED and MIDNIGHT_WALLET_MNEMONIC are set — unset one.',

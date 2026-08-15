@@ -17,6 +17,17 @@ globalThis.WebSocket = WebSocket;
 
 const PRIVATE_STATE_ID = 'dataVaultState';
 
+// ─── Timing constants ────────────────────────────────────────────────────────
+/** How often (ms) the faucet-funding loop polls the wallet for a new balance. */
+const FAUCET_POLL_MS = 10_000;
+/**
+ * How long (ms) to wait after the proof server confirms DUST is active before
+ * attempting contract deployment. The SDK needs time to settle the generated
+ * DUST on-chain before it can be spent in the deployment transaction.
+ */
+const DUST_SETTLE_WAIT_MS = 15_000;
+// ─────────────────────────────────────────────────────────────────────────────
+
 const { network, config: networkConfig } = resolveNetwork();
 const WALLET = getOrCreateWallet(network);
 const SEED = WALLET.seed;
@@ -129,7 +140,7 @@ export async function deploy() {
       const timeoutMs = Number.isFinite(rawTimeout) && rawTimeout > 0 ? rawTimeout : 300_000;
       const start = Date.now();
       while (true) {
-        await new Promise((r) => setTimeout(r, 10_000));
+        await new Promise((r) => setTimeout(r, FAUCET_POLL_MS));
         const s = await Rx.firstValueFrom(walletCtx.wallet.state().pipe(Rx.filter((x) => x.isSynced)));
         const tn = s.unshielded.balances[unshieldedToken().raw] ?? 0n;
         if (tn > 0n) {
@@ -195,7 +206,7 @@ export async function deploy() {
 
   await initContract(walletCtx);
   process.stdout.write('  Generating & settling on-chain DUST...');
-  await new Promise((r) => setTimeout(r, 15000));
+  await new Promise((r) => setTimeout(r, DUST_SETTLE_WAIT_MS));
   process.stdout.write(' done.\n');
   console.log('  Deploying contract...\n');
 

@@ -9,6 +9,9 @@ import { deploy } from './deploy';
 // @ts-expect-error Required for wallet sync
 globalThis.WebSocket = WebSocket;
 
+/** How long (ms) to pause between proof-server reachability probes. */
+const PROOF_SERVER_RETRY_MS = 2_000;
+
 async function waitForProofServer(url: string, maxMs = 120_000): Promise<boolean> {
   const deadline = Date.now() + maxMs;
   process.stdout.write(`  Waiting for proof server at ${url} ...  `);
@@ -18,7 +21,7 @@ async function waitForProofServer(url: string, maxMs = 120_000): Promise<boolean
       process.stdout.write('ready\n');
       return true;
     } catch {
-      await new Promise((r) => setTimeout(r, 2000));
+      await new Promise((r) => setTimeout(r, PROOF_SERVER_RETRY_MS));
       process.stdout.write('.');
     }
   }
