@@ -7,6 +7,7 @@
 // ────────────────────────────────────────────────────────────────────────────
 
 import { useState, useRef, useMemo, useEffect } from 'react';
+import { ZK_PROOF_ANIMATION_MS, FILE_HASH_ANIMATION_MS } from '../config';
 import type { NavSection } from '../App';
 import type { RegistryState, DataListing } from '../hooks/useIndexer';
 import type { WalletState, WalletType } from '../hooks/useMidnight';
@@ -1288,7 +1289,7 @@ function VerifierView({
   const handleExecuteZKProof = async () => {
     setIsVerifying(true);
     try {
-      await new Promise((r) => setTimeout(r, 600));
+      await new Promise((r) => setTimeout(r, ZK_PROOF_ANIMATION_MS));
       let tx: string | undefined = undefined;
 
       if (walletApi && typeof walletApi.callContract === 'function') {
@@ -1326,7 +1327,7 @@ function VerifierView({
         .map((b) => b.toString(16).padStart(2, '0'))
         .join('');
 
-      await new Promise((r) => setTimeout(r, 400));
+      await new Promise((r) => setTimeout(r, FILE_HASH_ANIMATION_MS));
 
       if (hashHex.toLowerCase() !== activeListing.dataCommitment.toLowerCase()) {
         setResult({

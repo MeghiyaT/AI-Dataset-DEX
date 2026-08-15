@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { TOAST_DURATION_MS } from './config';
 import './index.css';
 import { useMidnight } from './hooks/useMidnight';
 import { useIndexer } from './hooks/useIndexer';
@@ -16,7 +17,7 @@ function App() {
 
   const showToast = (msg: string) => {
     setToast(msg);
-    setTimeout(() => setToast(null), 3500);
+    setTimeout(() => setToast(null), TOAST_DURATION_MS);
   };
 
   const walletApi =

@@ -6,6 +6,7 @@ import { useState } from 'react';
 import type { MidnightHook } from '../hooks/useMidnight';
 import { WALLET_INSTALL_URLS } from '../hooks/useMidnight';
 import { WalletIcon, FaucetIcon, MidnightTokenIcon } from './WalletIcons';
+import { COPY_FEEDBACK_MS } from '../config';
 
 interface Props {
   hook: MidnightHook;
@@ -36,7 +37,7 @@ export function WalletConnect({ hook }: Props) {
   const copy = (text: string) => {
     navigator.clipboard.writeText(text);
     setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    setTimeout(() => setCopied(false), COPY_FEEDBACK_MS);
   };
 
   const handleSwitch = async (type: '1am' | 'lace') => {

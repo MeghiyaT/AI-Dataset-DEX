@@ -8,12 +8,12 @@
 // ────────────────────────────────────────────────────────────────────────────
 
 import { useState, useEffect, useCallback } from 'react';
-
-const INDEXER_URL =
-  (import.meta.env.VITE_INDEXER_URL as string) ||
-  'https://indexer.preprod.midnight.network/api/v4/graphql';
-
-const CONTRACT_ADDRESS = (import.meta.env.VITE_CONTRACT_ADDRESS as string) || '';
+import {
+  INDEXER_URL,
+  CONTRACT_ADDRESS,
+  INDEXER_POLL_MS,
+  INDEXER_FETCH_TIMEOUT_MS,
+} from '../config';
 
 export interface DataListing {
   datasetId: string;         // 32-byte hex ID
@@ -89,7 +89,7 @@ async function fetchRegistryState(): Promise<{ verifiedCount: number; listings: 
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ query: STATE_QUERY, variables: { address: CONTRACT_ADDRESS } }),
-      signal: AbortSignal.timeout(6_000),
+      signal: AbortSignal.timeout(INDEXER_FETCH_TIMEOUT_MS),
     });
 
     if (!resp.ok) return null;
@@ -107,9 +107,12 @@ async function fetchRegistryState(): Promise<{ verifiedCount: number; listings: 
       datasetSize: e.value?.datasetSize ?? '0',
       rowCount: e.value?.rowCount ?? '0',
       license: e.value?.license ?? 'CC-BY-4.0',
-      isActive: e.value?.isActive ?? true,
+      // isActive defaults to false (conservative): unlisted data is hidden
+      // until the on-chain field explicitly confirms it is active.
+      isActive: e.value?.isActive ?? false,
       category: e.value?.category ?? 'General AI',
-      complianceTag: 'Zero-Knowledge Verified',
+      // complianceTag is sourced from on-chain metadata; null if not set.
+      complianceTag: e.value?.complianceTag ?? null,
     }));
 
     return {
@@ -261,7 +264,7 @@ export function useIndexer(): IndexerHook {
 
   useEffect(() => {
     refresh();
-    const timer = setInterval(refresh, 20_000);
+    const timer = setInterval(refresh, INDEXER_POLL_MS);
     return () => clearInterval(timer);
   }, [refresh]);
 

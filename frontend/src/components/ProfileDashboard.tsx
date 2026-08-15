@@ -5,6 +5,7 @@
 // transactions from actual wallet ZK calls. Zero mock or pre-seeded data.
 
 import { useState } from 'react';
+import { COPY_FEEDBACK_MS } from '../config';
 import type { RegistryState, DataListing } from '../hooks/useIndexer';
 import type { UserProfileHook } from '../hooks/useUserProfile';
 import type { NavSection } from '../App';
@@ -75,7 +76,7 @@ export function ProfileDashboard({
   const copyAddress = () => {
     navigator.clipboard.writeText(walletAddress);
     setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    setTimeout(() => setCopied(false), COPY_FEEDBACK_MS);
   };
 
   const saveNickname = () => {

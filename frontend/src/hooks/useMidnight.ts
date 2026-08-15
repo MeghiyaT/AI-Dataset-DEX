@@ -7,8 +7,7 @@
 // ────────────────────────────────────────────────────────────────────────────
 
 import { useState, useCallback, useRef, useEffect } from 'react';
-
-export const TARGET_NETWORK = (import.meta.env.VITE_NETWORK as string) || 'preprod';
+import { TARGET_NETWORK, WALLET_DETECT_DELAYS, getFaucetUrl } from '../config';
 
 const LACE_ADDRESS_KEY = 'datavault_lace_address';
 const ONEAM_ADDRESS_KEY = 'datavault_1am_address';
@@ -19,12 +18,8 @@ export const WALLET_INSTALL_URLS = {
   '1am': 'https://1am.xyz',
 };
 
-export function getFaucetUrl(network: string = TARGET_NETWORK): string {
-  const net = (network || '').toLowerCase();
-  if (net === 'preview') return 'https://midnight-tmnight-preview.nethermind.dev/';
-  if (net === 'preprod') return 'https://midnight-tmnight-preprod.nethermind.dev/';
-  return 'https://midnight-tmnight-preprod.nethermind.dev/';
-}
+// Re-export getFaucetUrl so existing consumers of this module are unaffected.
+export { getFaucetUrl } from '../config';
 
 // Safely extract an address string from any shape the wallet API might return.
 function extractAddr(raw: unknown): string {
@@ -248,7 +243,18 @@ async function fetchWalletBalance(api: any): Promise<{ formatted: string; raw: n
   return { formatted: '0.0 tNIGHT', raw: 0 };
 }
 
-// Minimal fallback API if address is stored but window reloads temporarily
+/**
+ * Minimal read-only API surface returned when the wallet address is known from
+ * localStorage but the browser extension hasn't re-injected yet after a page
+ * reload. This is NOT mock data — it's a short-lived bridge that keeps the UI
+ * in a "connected" state while the extension asynchronously re-injects its
+ * DApp Connector (typically < 2 s after DOMContentLoaded). Once the real
+ * connector becomes available, the next `connect()` call replaces this stub
+ * with the live API.
+ *
+ * Balance methods intentionally return zero so the UI never shows a stale
+ * or fabricated balance.
+ */
 function createFallbackWalletApi(address: string, name: string) {
   return {
     name,
@@ -346,14 +352,8 @@ export function useMidnight(): MidnightHook {
     };
 
     detect();
-    const t1 = setTimeout(detect, 300);
-    const t2 = setTimeout(detect, 1000);
-    const t3 = setTimeout(detect, 2500);
-    return () => {
-      clearTimeout(t1);
-      clearTimeout(t2);
-      clearTimeout(t3);
-    };
+    const timers = WALLET_DETECT_DELAYS.map((ms) => setTimeout(detect, ms));
+    return () => timers.forEach(clearTimeout);
   }, []);
 
   const clearSwitchNotification = useCallback(() => {
