@@ -253,9 +253,6 @@ function App() {
             <a href="https://docs.midnight.network" target="_blank" rel="noreferrer" style={{ color: 'var(--cyan-light)', textDecoration: 'none' }}>
               Documentation ↗
             </a>
-            <a href="https://midnight-tmnight-preprod.nethermind.dev/" target="_blank" rel="noreferrer" style={{ color: 'var(--emerald-light)', textDecoration: 'none' }}>
-              Preprod Faucet (tNIGHT) ↗
-            </a>
           </div>
         </div>
       </footer>

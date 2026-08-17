@@ -130,47 +130,6 @@ export function MidnightTokenIcon({ size = 18, className, style }: IconProps) {
 }
 
 /**
- * Faucet / Water Droplet Icon with Glowing Gradient
- */
-export function FaucetIcon({ size = 18, className, style }: IconProps) {
-  return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 24 24"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-      className={className}
-      style={{ display: 'inline-block', verticalAlign: 'middle', flexShrink: 0, ...style }}
-    >
-      <defs>
-        <linearGradient id="faucet-grad" x1="12" y1="3" x2="12" y2="21" gradientUnits="userSpaceOnUse">
-          <stop offset="0%" stopColor="#67e8f9" />
-          <stop offset="60%" stopColor="#06b6d4" />
-          <stop offset="100%" stopColor="#3b82f6" />
-        </linearGradient>
-      </defs>
-      <path
-        d="M12 2.69L6.5 12.31C5.07 14.81 5.86 18.01 8.27 19.57C10.68 21.13 13.91 20.67 15.77 18.5C17.63 16.33 17.5 13.08 15.5 11.23L12 2.69Z"
-        fill="url(#faucet-grad)"
-        fillOpacity="0.25"
-        stroke="url(#faucet-grad)"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <path
-        d="M9.5 14C9.5 16 11 17.5 13 17.5"
-        stroke="#ffffff"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-        opacity="0.8"
-      />
-    </svg>
-  );
-}
-
-/**
  * Universal Wallet Icon that prioritizes dynamic injected extension icon,
  * falling back to authentic transparent SVG logos.
  */

@@ -1,13 +1,13 @@
 // useMidnight.ts
 // Midnight Wallet Connector — supports Midnight Lace & 1AM browser extensions with
-// dynamic CAIP-372 wallet discovery, non-destructive switching, and Preprod faucet support.
+// dynamic CAIP-372 wallet discovery and non-destructive switching.
 //
 // ─── Privacy Note ────────────────────────────────────────────────────────────
 // Private witnesses (raw dataset slices, provider secret) NEVER enter React state.
 // ────────────────────────────────────────────────────────────────────────────
 
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { TARGET_NETWORK, WALLET_DETECT_DELAYS, getFaucetUrl } from '../config';
+import { TARGET_NETWORK, WALLET_DETECT_DELAYS } from '../config';
 
 const LACE_ADDRESS_KEY = 'datavault_lace_address';
 const ONEAM_ADDRESS_KEY = 'datavault_1am_address';
@@ -17,9 +17,6 @@ export const WALLET_INSTALL_URLS = {
   lace: 'https://chromewebstore.google.com/detail/lace/gafhhkghbfjjkeiendhlofajokpaflmk',
   '1am': 'https://1am.xyz',
 };
-
-// Re-export getFaucetUrl so existing consumers of this module are unaffected.
-export { getFaucetUrl } from '../config';
 
 // Safely extract an address string from any shape the wallet API might return.
 function extractAddr(raw: unknown): string {
@@ -95,11 +92,10 @@ export type WalletState =
 
 export interface MidnightHook {
   walletState: WalletState;
-  connect: (type: WalletType) => Promise<boolean>;
+  connect: (type?: WalletType, isAutoConnect?: boolean) => Promise<boolean>;
   disconnect: () => void;
   clearError: () => void;
   targetNetwork: string;
-  faucetUrl: string;
   isLaceAvailable: boolean;
   is1amAvailable: boolean;
   laceIcon?: string;
@@ -360,104 +356,125 @@ export function useMidnight(): MidnightHook {
     setSwitchNotification(null);
   }, []);
 
-  const connect = useCallback(async (type: WalletType = '1am'): Promise<boolean> => {
-    const info = type === '1am' ? get1amConnectorInfo() : getLaceConnectorInfo();
-    const walletLabel = type === '1am' ? '1AM Wallet' : 'Midnight Lace';
-    const isCurrentlyConnected = walletState.status === 'connected';
+  const connect = useCallback(
+    async (type: WalletType = '1am', isAutoConnect = false): Promise<boolean> => {
+      const info = type === '1am' ? get1amConnectorInfo() : getLaceConnectorInfo();
+      const walletLabel = type === '1am' ? '1AM Wallet' : 'Midnight Lace';
+      const isCurrentlyConnected = walletState.status === 'connected';
 
-    // If switching wallet while already connected, perform non-destructive switch:
-    if (isCurrentlyConnected) {
-      if (!info?.connector) {
-        setSwitchNotification(
-          `${walletLabel} extension is not detected in your browser. Install ${walletLabel} to switch.`
-        );
-        return false;
-      }
-    } else {
-      setWalletState({ status: 'connecting' });
-    }
-
-    try {
-      let api: any = null;
-      if (info?.connector) {
-        api = await tryConnect(info.connector, TARGET_NETWORK);
-      }
-
-      const realAddr = await getWalletAddressFromApi(api);
-
-      if (!api && !realAddr) {
-        const errorMsg =
-          type === '1am'
-            ? '1AM Wallet extension was not detected. Please ensure 1AM is installed and unlocked.'
-            : 'Midnight Lace wallet extension was not detected. Please ensure Midnight Lace is installed and unlocked.';
-
-        if (isCurrentlyConnected) {
-          setSwitchNotification(errorMsg);
-          return false;
-        } else {
-          setWalletState({ status: 'error', message: errorMsg });
+      // If switching wallet while already connected, perform non-destructive switch:
+      if (isCurrentlyConnected) {
+        if (!info?.connector) {
+          setSwitchNotification(
+            `${walletLabel} extension is not detected in your browser. Install ${walletLabel} to switch.`
+          );
           return false;
         }
+      } else if (!isAutoConnect) {
+        setWalletState({ status: 'connecting' });
       }
-
-      if (!realAddr || !isValidMidnightAddress(realAddr)) {
-        const errorMsg = `${walletLabel} connected, but the wallet address could not be retrieved. Please unlock ${walletLabel} and approve connection.`;
-        if (isCurrentlyConnected) {
-          setSwitchNotification(errorMsg);
-          return false;
-        } else {
-          setWalletState({ status: 'error', message: errorMsg });
-          return false;
-        }
-      }
-
-      // Success: extract active network & balance
-      const activeNetwork = await extractWalletNetwork(api, realAddr);
 
       try {
-        localStorage.setItem(type === '1am' ? ONEAM_ADDRESS_KEY : LACE_ADDRESS_KEY, realAddr);
-        localStorage.setItem(LAST_WALLET_KEY, type);
-      } catch {}
+        let api: any = null;
+        if (info?.connector) {
+          api = await tryConnect(info.connector, TARGET_NETWORK);
+        }
 
-      const walletApi = api || createFallbackWalletApi(realAddr, walletLabel);
-      const { formatted, raw } = await fetchWalletBalance(walletApi);
-      apiRef.current = walletApi;
+        const realAddr = await getWalletAddressFromApi(api);
 
-      setSwitchNotification(null);
-      setWalletState({
-        status: 'connected',
-        address: realAddr,
-        balance: formatted,
-        rawBalance: raw,
-        network: activeNetwork,
-        walletType: type,
-        connectorName: info?.name || walletLabel,
-        iconUrl: info?.icon,
-        api: walletApi,
-      });
+        if (!api && !realAddr) {
+          if (isAutoConnect) {
+            // Silently fallback to idle on startup without alarming the user with error buttons
+            setWalletState({ status: 'idle' });
+            return false;
+          }
 
-      return true;
-    } catch (err: any) {
-      console.error(`[useMidnight] Error connecting to ${walletLabel}:`, err);
-      const msg = err?.message || `Failed to connect to ${walletLabel}.`;
-      if (isCurrentlyConnected) {
-        setSwitchNotification(msg);
-        return false;
-      } else {
-        setWalletState({ status: 'error', message: msg });
-        return false;
+          const errorMsg =
+            type === '1am'
+              ? '1AM Wallet extension was not detected. Please ensure 1AM is installed and unlocked.'
+              : 'Midnight Lace wallet extension was not detected. Please ensure Midnight Lace is installed and unlocked.';
+
+          if (isCurrentlyConnected) {
+            setSwitchNotification(errorMsg);
+            return false;
+          } else {
+            setWalletState({ status: 'error', message: errorMsg });
+            return false;
+          }
+        }
+
+        if (!realAddr || !isValidMidnightAddress(realAddr)) {
+          if (isAutoConnect) {
+            setWalletState({ status: 'idle' });
+            return false;
+          }
+
+          const errorMsg = `${walletLabel} connected, but the wallet address could not be retrieved. Please unlock ${walletLabel} and approve connection.`;
+          if (isCurrentlyConnected) {
+            setSwitchNotification(errorMsg);
+            return false;
+          } else {
+            setWalletState({ status: 'error', message: errorMsg });
+            return false;
+          }
+        }
+
+        // Success: extract active network & balance
+        const activeNetwork = await extractWalletNetwork(api, realAddr);
+
+        try {
+          localStorage.setItem(type === '1am' ? ONEAM_ADDRESS_KEY : LACE_ADDRESS_KEY, realAddr);
+          localStorage.setItem(LAST_WALLET_KEY, type);
+        } catch {}
+
+        const walletApi = api || createFallbackWalletApi(realAddr, walletLabel);
+        const { formatted, raw } = await fetchWalletBalance(walletApi);
+        apiRef.current = walletApi;
+
+        setSwitchNotification(null);
+        setWalletState({
+          status: 'connected',
+          address: realAddr,
+          balance: formatted,
+          rawBalance: raw,
+          network: activeNetwork,
+          walletType: type,
+          connectorName: info?.name || walletLabel,
+          iconUrl: info?.icon,
+          api: walletApi,
+        });
+
+        return true;
+      } catch (err: any) {
+        if (isAutoConnect) {
+          console.warn(`[useMidnight] Auto-connect silently skipped for ${walletLabel}:`, err);
+          setWalletState({ status: 'idle' });
+          return false;
+        }
+
+        console.error(`[useMidnight] Error connecting to ${walletLabel}:`, err);
+        const msg = err?.message || `Failed to connect to ${walletLabel}.`;
+        if (isCurrentlyConnected) {
+          setSwitchNotification(msg);
+          return false;
+        } else {
+          setWalletState({ status: 'error', message: msg });
+          return false;
+        }
       }
-    }
-  }, [walletState.status]);
+    },
+    [walletState.status]
+  );
 
-  // Auto reconnect on page mount
+  // Auto reconnect on page mount (silent)
   useEffect(() => {
     const lastWallet = localStorage.getItem(LAST_WALLET_KEY) as WalletType | null;
     if (lastWallet && (lastWallet === 'lace' || lastWallet === '1am')) {
       const storedAddr = localStorage.getItem(lastWallet === 'lace' ? LACE_ADDRESS_KEY : ONEAM_ADDRESS_KEY);
       if (storedAddr && isValidMidnightAddress(storedAddr)) {
-        connect(lastWallet).catch((err) => {
+        connect(lastWallet, true).catch((err) => {
           console.warn('[useMidnight] auto-connect skipped:', err);
+          setWalletState({ status: 'idle' });
         });
       }
     }
@@ -477,16 +494,12 @@ export function useMidnight(): MidnightHook {
     setWalletState({ status: 'idle' });
   }, []);
 
-  const activeNetwork = walletState.status === 'connected' ? walletState.network : TARGET_NETWORK;
-  const faucetUrl = getFaucetUrl(activeNetwork);
-
   return {
     walletState,
     connect,
     disconnect,
     clearError,
     targetNetwork: TARGET_NETWORK,
-    faucetUrl,
     isLaceAvailable,
     is1amAvailable,
     laceIcon,

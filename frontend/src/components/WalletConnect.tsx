@@ -1,11 +1,11 @@
 // WalletConnect.tsx
-// Midnight Wallet Connection — supports Lace and 1AM extensions with authentic logos,
-// non-destructive switching, and direct Preprod faucet integration.
+// Midnight Wallet Connection — supports Lace and 1AM extensions with authentic logos
+// and non-destructive switching.
 
 import { useState } from 'react';
 import type { MidnightHook } from '../hooks/useMidnight';
 import { WALLET_INSTALL_URLS } from '../hooks/useMidnight';
-import { WalletIcon, FaucetIcon, MidnightTokenIcon } from './WalletIcons';
+import { WalletIcon, MidnightTokenIcon } from './WalletIcons';
 import { COPY_FEEDBACK_MS } from '../config';
 
 interface Props {
@@ -23,7 +23,6 @@ export function WalletConnect({ hook }: Props) {
     connect,
     disconnect,
     targetNetwork,
-    faucetUrl,
     isLaceAvailable,
     is1amAvailable,
     switchNotification,
@@ -182,20 +181,6 @@ export function WalletConnect({ hook }: Props) {
                     </span>
                   </a>
                 )}
-
-                <div style={{ borderTop: '1px solid var(--border-subtle)', paddingTop: '0.65rem', marginTop: '0.25rem' }}>
-                  <p style={{ fontSize: '0.72rem', color: 'var(--text-subtle)', textAlign: 'center', marginBottom: 0 }}>
-                    Need test tokens first?{' '}
-                    <a
-                      href={faucetUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      style={{ color: 'var(--cyan-light)', textDecoration: 'none', fontWeight: 600 }}
-                    >
-                      Preprod Faucet ↗
-                    </a>
-                  </p>
-                </div>
               </div>
             </div>
           )}
@@ -485,53 +470,6 @@ export function WalletConnect({ hook }: Props) {
                     </span>
                   </a>
                 )}
-              </div>
-
-              {/* Redesigned Premium Preprod Faucet Action */}
-              <div style={{ marginBottom: '0.85rem' }}>
-                <a
-                  href={faucetUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    background: 'linear-gradient(135deg, rgba(6, 182, 212, 0.1) 0%, rgba(16, 185, 129, 0.1) 100%)',
-                    border: '1px solid rgba(6, 182, 212, 0.35)',
-                    borderRadius: 'var(--radius-sm)',
-                    padding: '0.65rem 0.75rem',
-                    textDecoration: 'none',
-                    transition: 'all 0.2s ease',
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.borderColor = 'rgba(103, 232, 249, 0.7)';
-                    e.currentTarget.style.boxShadow = '0 0 16px rgba(6, 182, 212, 0.25)';
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.borderColor = 'rgba(6, 182, 212, 0.35)';
-                    e.currentTarget.style.boxShadow = 'none';
-                  }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-                    <FaucetIcon size={20} />
-                    <div>
-                      <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#fff', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-                        <span>Get Free tNIGHT</span>
-                        <span style={{ fontSize: '0.7rem', color: 'var(--cyan-light)' }}>↗</span>
-                      </div>
-                      <div style={{ fontSize: '0.68rem', color: 'var(--cyan-light)' }}>
-                        Preprod Faucet · 1,000 tNIGHT
-                      </div>
-                    </div>
-                  </div>
-                  <span
-                    className="badge badge-cyan"
-                    style={{ fontSize: '0.6rem', padding: '0.15rem 0.45rem' }}
-                  >
-                    Drip 🚰
-                  </span>
-                </a>
               </div>
 
               {/* Disconnect Action */}

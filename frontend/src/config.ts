@@ -35,25 +35,6 @@ export const INDEXER_URL: string =
 export const CONTRACT_ADDRESS: string =
   (import.meta.env.VITE_CONTRACT_ADDRESS as string) || '';
 
-// ─── Faucet ──────────────────────────────────────────────────────────────────
-
-/** Faucet URL for the Midnight Preview network. Override via VITE_FAUCET_PREVIEW_URL. */
-export const FAUCET_PREVIEW_URL: string =
-  (import.meta.env.VITE_FAUCET_PREVIEW_URL as string) ||
-  'https://midnight-tmnight-preview.nethermind.dev/';
-
-/** Faucet URL for the Midnight Preprod network. Override via VITE_FAUCET_PREPROD_URL. */
-export const FAUCET_PREPROD_URL: string =
-  (import.meta.env.VITE_FAUCET_PREPROD_URL as string) ||
-  'https://midnight-tmnight-preprod.nethermind.dev/';
-
-/** Returns the faucet URL for a given network identifier. */
-export function getFaucetUrl(network: string = TARGET_NETWORK): string {
-  const net = (network || '').toLowerCase();
-  if (net === 'preview') return FAUCET_PREVIEW_URL;
-  return FAUCET_PREPROD_URL;
-}
-
 // ─── UI Timing Constants ─────────────────────────────────────────────────────
 
 /**
