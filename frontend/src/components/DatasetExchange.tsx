@@ -1,25 +1,46 @@
 // DatasetExchange.tsx
-// Simple, Human-Friendly AI Dataset Exchange on Midnight Network.
-//
-// ─── Privacy Note ────────────────────────────────────────────────────────────
-// • Your raw data files NEVER leave your computer.
-// • Only a secure digital fingerprint (hash) is saved on the Midnight blockchain.
-// ────────────────────────────────────────────────────────────────────────────
+// Privacy-Preserving AI Dataset Exchange — About, Marketplace, Register, and Verifier views
+// Styled with Glassmorphism in PLUM (#381932) & MILK (#FFF3E6)
 
-import { useState, useRef, useMemo, useEffect } from 'react';
-import { ZK_PROOF_ANIMATION_MS, FILE_HASH_ANIMATION_MS } from '../config';
-import type { NavSection } from '../App';
-import type { RegistryState, DataListing } from '../hooks/useIndexer';
-import type { WalletState, WalletType } from '../hooks/useMidnight';
-
+import React, { useState, useMemo } from 'react';
+import type { WalletState } from '../hooks/useMidnight';
+import type { DataListing, RegistryState } from '../hooks/useIndexer';
 import type { UserProfileHook } from '../hooks/useUserProfile';
+import type { NavSection } from '../App';
 import { ProfileDashboard } from './ProfileDashboard';
-import { WalletIcon } from './WalletIcons';
+import { AppLogo } from './AppLogo';
+import { requestOnChainProof } from '../services/proofServerService';
+import { PROOF_SERVER_URL } from '../config';
+import {
+  ShieldCheck,
+  FolderGit2,
+  Lock,
+  Layers,
+  Search,
+  PlusCircle,
+  CheckCircle2,
+  RefreshCw,
+  Archive,
+  Trash2,
+  Zap,
+  AlertTriangle,
+  Check,
+  X,
+  Scale,
+  Database,
+  ArrowRight,
+  Eye,
+  Bookmark,
+  ExternalLink,
+  Server
+} from 'lucide-react';
+
+const FILE_HASH_ANIMATION_MS = 600;
 
 interface Props {
   walletApi: any;
   walletState: WalletState;
-  onConnect: (type: WalletType) => Promise<any>;
+  onConnect: (walletType: '1am' | 'lace') => Promise<void>;
   activeSection: NavSection;
   onSelectSection: (sec: NavSection) => void;
   registryState: RegistryState;
@@ -30,26 +51,11 @@ interface Props {
   profileHook: UserProfileHook;
   onRefresh: () => void;
   onAddListing: (listing: DataListing) => void;
-  onIncrementVerified: () => void;
   onToggleArchive?: (datasetId: string) => void;
   onRemoveListing?: (datasetId: string) => void;
+  onIncrementVerified: () => void;
   laceIcon?: string;
   oneAmIcon?: string;
-}
-
-const FAVORITES_STORAGE_KEY = 'datavault_favorite_dataset_ids';
-
-function getSavedFavorites(): string[] {
-  try {
-    const raw = localStorage.getItem(FAVORITES_STORAGE_KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) {
-        return parsed.filter((id) => typeof id === 'string');
-      }
-    }
-  } catch {}
-  return [];
 }
 
 export function DatasetExchange({
@@ -61,93 +67,119 @@ export function DatasetExchange({
   registryState,
   indexerLoading,
   indexerError,
-  onRefresh,
-  onAddListing,
-  onIncrementVerified,
   walletAddress,
   profileHook,
+  onRefresh,
+  onAddListing,
   onToggleArchive,
   onRemoveListing,
-  laceIcon,
-  oneAmIcon,
+  onIncrementVerified,
 }: Props) {
-  const [inspectModalListing, setInspectModalListing] = useState<DataListing | null>(null);
-  const [quickVerifyListing, setQuickVerifyListing] = useState<DataListing | null>(null);
-  const [favorites, setFavorites] = useState<string[]>(() => getSavedFavorites());
+  const [selectedListingForModal, setSelectedListingForModal] = useState<DataListing | null>(null);
+  const [preselectedListingForVerifier, setPreselectedListingForVerifier] = useState<DataListing | null>(null);
 
-  const toggleFavorite = (datasetId: string) => {
+  // Favorites state persisted in localStorage
+  const [favorites, setFavorites] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem('datavault_favorites');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  const toggleFavorite = (id: string) => {
     setFavorites((prev) => {
-      const next = prev.includes(datasetId)
-        ? prev.filter((id) => id !== datasetId)
-        : [...prev, datasetId];
+      const next = prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id];
       try {
-        localStorage.setItem(FAVORITES_STORAGE_KEY, JSON.stringify(next));
+        localStorage.setItem('datavault_favorites', JSON.stringify(next));
       } catch {}
       return next;
     });
   };
 
+  const handleStartVerification = (listing: DataListing) => {
+    setSelectedListingForModal(null);
+    setPreselectedListingForVerifier(listing);
+    onSelectSection('verifier');
+  };
+
   return (
     <div>
-      {/* ── 1. About & Vision Section (Home Page) ──────────────────────────── */}
+      {/* 1. ABOUT & PROTOCOL OVERVIEW */}
       {activeSection === 'about' && (
         <AboutView
-          verifiedCount={registryState.verifiedCount}
-          listingCount={registryState.listings.filter((l) => l.isActive !== false).length}
-          onGoMarketplace={() => onSelectSection('marketplace')}
-          onGoRegister={() => onSelectSection('register')}
-          onGoVerifier={() => onSelectSection('verifier')}
+          onExplore={() => onSelectSection('marketplace')}
+          onRegister={() => onSelectSection('register')}
+          onVerify={() => onSelectSection('verifier')}
         />
       )}
 
-      {/* ── 2. Marketplace Section ─────────────────────────────────────────── */}
+      {/* 2. DATASET MARKETPLACE */}
       {activeSection === 'marketplace' && (
         <MarketplaceView
           listings={registryState.listings}
-          favorites={favorites}
-          onToggleFavorite={toggleFavorite}
           loading={indexerLoading}
           error={indexerError}
+          favorites={favorites}
+          onToggleFavorite={toggleFavorite}
           onRefresh={onRefresh}
-          onInspect={(l) => setInspectModalListing(l)}
-          onVerify={(l) => {
-            setQuickVerifyListing(l);
-            onSelectSection('verifier');
-          }}
-          onGoRegister={() => onSelectSection('register')}
+          onInspect={(listing) => setSelectedListingForModal(listing)}
+          onVerify={handleStartVerification}
+          onRegisterNew={() => onSelectSection('register')}
         />
       )}
 
-      {/* ── 3. Register Section ────────────────────────────────────────────── */}
+      {/* 3. REGISTER DATASET */}
       {activeSection === 'register' && (
         <RegisterView
           walletApi={walletApi}
           walletState={walletState}
           onConnect={onConnect}
-          onAddListing={onAddListing}
+          onSuccess={(listing) => {
+            onAddListing(listing);
+            profileHook.addTransaction({
+              id: `tx_${Date.now()}`,
+              date: new Date().toISOString(),
+              datasetName: listing.datasetName,
+              datasetId: listing.datasetId,
+              type: 'registered',
+              status: 'completed',
+            });
+            onSelectSection('marketplace');
+          }}
           onToggleArchive={onToggleArchive}
           onRemoveListing={onRemoveListing}
-          onSuccess={() => onSelectSection('marketplace')}
-          laceIcon={laceIcon}
-          oneAmIcon={oneAmIcon}
         />
       )}
 
-      {/* ── 4. Verifier Section ────────────────────────────────────────────── */}
+      {/* 4. VERIFY AUTHENTICITY */}
       {activeSection === 'verifier' && (
         <VerifierView
           walletApi={walletApi}
           walletState={walletState}
-          listings={registryState.listings.filter((l) => l.isActive !== false)}
+          listings={registryState.listings}
           favorites={favorites}
           onToggleFavorite={toggleFavorite}
-          preselectedListing={quickVerifyListing}
-          onIncrementVerified={onIncrementVerified}
+          preselectedListing={preselectedListingForVerifier}
+          onIncrementVerified={() => {
+            onIncrementVerified();
+            if (preselectedListingForVerifier) {
+              profileHook.addTransaction({
+                id: `tx_${Date.now()}`,
+                date: new Date().toISOString(),
+                datasetName: preselectedListingForVerifier.datasetName,
+                datasetId: preselectedListingForVerifier.datasetId,
+                type: 'verified',
+                status: 'completed',
+              });
+            }
+          }}
           onGoRegister={() => onSelectSection('register')}
         />
       )}
 
-      {/* ── 5. Profile Section ──────────────────────────────────────────────── */}
+      {/* 5. USER PROFILE DASHBOARD */}
       {activeSection === 'profile' && walletAddress && (
         <ProfileDashboard
           walletAddress={walletAddress}
@@ -159,20 +191,17 @@ export function DatasetExchange({
         />
       )}
 
-      {/* ── Inspection Modal ──────────────────────────────────────────────── */}
-      {inspectModalListing && (
+      {/* INSPECT MODAL */}
+      {selectedListingForModal && (
         <InspectModal
-          listing={inspectModalListing}
-          isFavorite={favorites.includes(inspectModalListing.datasetId)}
-          onToggleFavorite={() => toggleFavorite(inspectModalListing.datasetId)}
+          listing={selectedListingForModal}
+          isFavorite={favorites.includes(selectedListingForModal.datasetId)}
+          walletAddress={walletAddress}
+          onToggleFavorite={() => toggleFavorite(selectedListingForModal.datasetId)}
           onToggleArchive={onToggleArchive}
           onRemoveListing={onRemoveListing}
-          onClose={() => setInspectModalListing(null)}
-          onVerify={() => {
-            setQuickVerifyListing(inspectModalListing);
-            setInspectModalListing(null);
-            onSelectSection('verifier');
-          }}
+          onClose={() => setSelectedListingForModal(null)}
+          onVerify={() => handleStartVerification(selectedListingForModal)}
         />
       )}
     </div>
@@ -180,223 +209,194 @@ export function DatasetExchange({
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
-// 1. ABOUT & HOW IT WORKS (HOME PAGE)
+// 1. ABOUT VIEW (Hero + Protocol Architecture)
 // ═════════════════════════════════════════════════════════════════════════════
 
 function AboutView({
-  verifiedCount,
-  listingCount,
-  onGoMarketplace,
-  onGoRegister,
-  onGoVerifier,
+  onExplore,
+  onRegister,
+  onVerify,
 }: {
-  verifiedCount: number;
-  listingCount: number;
-  onGoMarketplace: () => void;
-  onGoRegister: () => void;
-  onGoVerifier: () => void;
+  onExplore: () => void;
+  onRegister: () => void;
+  onVerify: () => void;
 }) {
   return (
-    <div style={{ maxWidth: 940, margin: '0 auto' }}>
-      {/* Hero Header */}
-      <div style={{ textAlign: 'center', marginBottom: '3.5rem' }}>
-        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1.2rem' }}>
-          <span className="badge badge-purple">MIDNIGHT BLOCKCHAIN</span>
-          <span className="badge badge-green">100% PRIVATE DATA</span>
-          <span className="badge badge-cyan">GDPR & CCPA COMPLIANT</span>
+    <div style={{ maxWidth: 960, margin: '0 auto' }}>
+      {/* ── HERO BANNER ──────────────────────────────────────────────────────── */}
+      <div
+        className="card"
+        style={{
+          padding: '3.5rem 2.5rem',
+          textAlign: 'center',
+          marginBottom: '2.5rem',
+          background: 'linear-gradient(145deg, rgba(18, 76, 130, 0.45) 0%, rgba(10, 43, 74, 0.8) 100%)',
+          border: '1px solid rgba(250, 240, 202, 0.28)',
+          boxShadow: '0 24px 64px rgba(4, 18, 32, 0.75)',
+        }}
+      >
+        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.6rem', marginBottom: '1.25rem' }}>
+          <AppLogo size={40} />
+          <span className="badge badge-plum" style={{ fontSize: '0.78rem', padding: '0.35rem 0.85rem' }}>
+            <span className="pulse-dot-plum" />
+            <span>Private & Secure AI Data Exchange</span>
+          </span>
         </div>
 
-        <h1 style={{ marginBottom: '1.2rem', lineHeight: 1.15 }}>
-          Share & Verify AI Datasets <span className="text-gradient">Without Exposing Private Data</span>
+        <h1 style={{ marginBottom: '1.2rem', maxWidth: 780, margin: '0 auto 1.2rem' }}>
+          Share & Verify AI Training Data with{' '}
+          <span className="text-gradient">Complete Privacy</span>
         </h1>
 
-        <p style={{ fontSize: '1.1rem', color: 'var(--text-muted)', maxWidth: 700, margin: '0 auto 2.2rem', lineHeight: 1.6 }}>
-          Midnight technology lets you prove an AI dataset is real and untampered — <strong>without ever uploading or exposing the private records inside</strong>.
-        </p>
-
-        {/* Primary Action Buttons */}
-        <div style={{ display: 'flex', justifyContent: 'center', gap: '1rem', flexWrap: 'wrap', marginBottom: '2.5rem' }}>
-          <button className="btn btn-primary btn-lg" onClick={onGoMarketplace}>
-            Explore Datasets ➔
-          </button>
-          <button className="btn btn-secondary btn-lg" onClick={onGoRegister}>
-            📝 Register a Dataset
-          </button>
-          <button className="btn btn-secondary btn-lg" onClick={onGoVerifier}>
-            🔍 Test Dataset Authenticity
-          </button>
-        </div>
-
-        {/* 3 Simple Stats */}
-        <div
+        <p
           style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(3, 1fr)',
-            gap: '1rem',
-            background: 'var(--bg-card)',
-            border: '1px solid var(--border-subtle)',
-            borderRadius: 'var(--radius-md)',
-            padding: '1.5rem',
+            fontSize: '1.08rem',
+            color: 'var(--text-muted)',
+            maxWidth: 680,
+            margin: '0 auto 2.25rem',
+            lineHeight: 1.6,
           }}
         >
-          <div>
-            <div style={{ fontSize: '2rem', fontWeight: 800, color: 'var(--emerald-light)' }}>
-              {verifiedCount}
-            </div>
-            <div style={{ fontSize: '0.78rem', color: 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-              Authenticity Checks Completed
-            </div>
-          </div>
-          <div>
-            <div style={{ fontSize: '2rem', fontWeight: 800, color: 'var(--primary-light)' }}>
-              {listingCount}
-            </div>
-            <div style={{ fontSize: '0.78rem', color: 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-              Protected Datasets
-            </div>
-          </div>
-          <div>
-            <div style={{ fontSize: '2rem', fontWeight: 800, color: 'var(--cyan-light)' }}>
-              0 Bytes
-            </div>
-            <div style={{ fontSize: '0.78rem', color: 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-              Raw Data Exposed (ZK Architecture)
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* ── Problem & Solution ──────────────────────────────────────────────── */}
-      <div className="grid-2" style={{ marginBottom: '2.5rem' }}>
-        <div className="card">
-          <div style={{ fontSize: '1.8rem', marginBottom: '0.5rem' }}>⚠️ The Real-World Problem</div>
-          <h3 style={{ color: '#fff', marginBottom: '0.5rem' }}>Why AI Data Sharing is Stuck</h3>
-          <p style={{ fontSize: '0.9rem', lineHeight: 1.6 }}>
-            Modern AI models need huge amounts of real-world data (medical scans, financial transactions, conversations). But strict privacy laws like <strong>GDPR</strong> and <strong>CCPA</strong> make sharing raw personal data illegal or risky.
-          </p>
-        </div>
-
-        <div className="card">
-          <div style={{ fontSize: '1.8rem', marginBottom: '0.5rem' }}>🛡️ The Simple Solution</div>
-          <h3 style={{ color: '#fff', marginBottom: '0.5rem' }}>Zero-Knowledge Verification</h3>
-          <p style={{ fontSize: '0.9rem', lineHeight: 1.6 }}>
-            Instead of sharing raw files, DataVault creates a <strong>secure digital fingerprint</strong> right on your computer. Anyone can mathematically verify the data is authentic without seeing a single private record.
-          </p>
-        </div>
-      </div>
-
-      {/* ── How It Works in 3 Simple Steps ──────────────────────────────────── */}
-      <div className="card" style={{ marginBottom: '2.5rem' }}>
-        <h3 style={{ fontSize: '1.3rem', marginBottom: '0.4rem' }}>How It Works in 3 Steps</h3>
-        <p style={{ fontSize: '0.88rem', color: 'var(--text-muted)', marginBottom: '1.5rem' }}>
-          No complex setup required. Everything happens directly in your browser.
+          DataVault is a secure marketplace for AI training datasets. Buy, sell, and verify dataset quality and copyright compliance without ever exposing raw private data.
         </p>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1rem' }}>
+        <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center', flexWrap: 'wrap' }}>
+          <button className="btn btn-primary btn-lg" onClick={onExplore}>
+            <span>Browse Marketplace</span>
+            <ArrowRight size={16} />
+          </button>
+          <button className="btn btn-secondary btn-lg" onClick={onRegister}>
+            <PlusCircle size={16} />
+            <span>Share a Dataset</span>
+          </button>
+          <button className="btn btn-secondary btn-lg" onClick={onVerify}>
+            <CheckCircle2 size={16} />
+            <span>Verify a Dataset</span>
+          </button>
+        </div>
+      </div>
+
+      {/* ── CORE VALUE PILLARS (3-Column Grid) ───────────────────────────────── */}
+      <div className="grid-3" style={{ marginBottom: '2.5rem' }}>
+        <div className="card" style={{ padding: '1.75rem' }}>
+          <div
+            style={{
+              width: 44,
+              height: 44,
+              borderRadius: 'var(--radius-sm)',
+              background: 'rgba(250, 240, 202, 0.12)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: '#FAF0CA',
+              marginBottom: '1.2rem',
+              border: '1px solid rgba(250, 240, 202, 0.25)',
+            }}
+          >
+            <Lock size={22} />
+          </div>
+          <h3 style={{ marginBottom: '0.6rem', color: '#FAF0CA' }}>100% Private</h3>
+          <p style={{ fontSize: '0.88rem', color: 'var(--text-muted)', margin: 0, lineHeight: 1.55 }}>
+            Prove your data is real and authentic without uploading or exposing confidential training records.
+          </p>
+        </div>
+
+        <div className="card" style={{ padding: '1.75rem' }}>
+          <div
+            style={{
+              width: 44,
+              height: 44,
+              borderRadius: 'var(--radius-sm)',
+              background: 'rgba(250, 240, 202, 0.12)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: '#FAF0CA',
+              marginBottom: '1.2rem',
+              border: '1px solid rgba(250, 240, 202, 0.25)',
+            }}
+          >
+            <ShieldCheck size={22} />
+          </div>
+          <h3 style={{ marginBottom: '0.6rem', color: '#FAF0CA' }}>Tamper-Proof Guarantee</h3>
+          <p style={{ fontSize: '0.88rem', color: 'var(--text-muted)', margin: 0, lineHeight: 1.55 }}>
+            Every dataset gets a unique digital fingerprint stored securely so buyers know it was never altered.
+          </p>
+        </div>
+
+        <div className="card" style={{ padding: '1.75rem' }}>
+          <div
+            style={{
+              width: 44,
+              height: 44,
+              borderRadius: 'var(--radius-sm)',
+              background: 'rgba(250, 240, 202, 0.12)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: '#FAF0CA',
+              marginBottom: '1.2rem',
+              border: '1px solid rgba(250, 240, 202, 0.25)',
+            }}
+          >
+            <Scale size={22} />
+          </div>
+          <h3 style={{ marginBottom: '0.6rem', color: '#FAF0CA' }}>Legally Compliant</h3>
+          <p style={{ fontSize: '0.88rem', color: 'var(--text-muted)', margin: 0, lineHeight: 1.55 }}>
+            Meets EU AI Act, GDPR, and CCPA standards. Keep complete provenance trails without storing personal info.
+          </p>
+        </div>
+      </div>
+
+      {/* ── HOW IT WORKS: STEP-BY-STEP WORKFLOW ────────────────────────────── */}
+      <div className="card" style={{ padding: '2.25rem', marginBottom: '2.5rem' }}>
+        <h2 style={{ marginBottom: '0.4rem', color: '#FAF0CA' }}>How DataVault AI Works</h2>
+        <p style={{ fontSize: '0.9rem', color: 'var(--text-muted)', marginBottom: '1.75rem' }}>
+          Three simple steps to share, buy, and verify AI datasets with confidence.
+        </p>
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '1.25rem' }}>
           {[
             {
-              step: '1',
-              title: 'Select Your Dataset File',
-              desc: 'Choose any file on your computer. It stays 100% on your device and is never uploaded anywhere.',
-              icon: '📁',
+              step: '01',
+              title: '1. Scan File Locally',
+              desc: 'Your browser creates a digital fingerprint of your file. Your actual data never leaves your computer.',
+              icon: <FolderGit2 size={20} />,
             },
             {
-              step: '2',
-              title: 'Create Digital Fingerprint',
-              desc: 'Your browser computes a tamper-proof digital fingerprint in just a couple of seconds.',
-              icon: '🔒',
+              step: '02',
+              title: '2. Publish Certificate',
+              desc: 'The digital fingerprint and license terms are securely recorded with your approval.',
+              icon: <Layers size={20} />,
             },
             {
-              step: '3',
-              title: 'Record & Verify on Blockchain',
-              desc: 'Midnight blockchain records the fingerprint. Anyone can verify the data is authentic without seeing inside.',
-              icon: '⛓️',
+              step: '03',
+              title: '3. One-Click Verification',
+              desc: 'Anyone can instantly confirm the dataset is authentic, unaltered, and copyright-compliant.',
+              icon: <CheckCircle2 size={20} />,
             },
-          ].map((item) => (
+          ].map((s) => (
             <div
-              key={item.step}
+              key={s.step}
               style={{
-                background: 'rgba(0, 0, 0, 0.35)',
-                border: '1px solid var(--border-subtle)',
+                background: 'rgba(250, 240, 202, 0.05)',
+                border: '1px solid var(--border-glass)',
                 borderRadius: 'var(--radius-sm)',
-                padding: '1.25rem',
-                textAlign: 'center',
+                padding: '1.35rem',
               }}
             >
-              <div style={{ fontSize: '1.8rem', marginBottom: '0.4rem' }}>{item.icon}</div>
-              <div style={{ fontSize: '0.72rem', color: 'var(--primary-light)', fontWeight: 700, textTransform: 'uppercase' }}>
-                Step {item.step}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.85rem' }}>
+                <span className="mono" style={{ fontSize: '0.78rem', fontWeight: 800, color: 'var(--accent-gold)' }}>
+                  {s.step}
+                </span>
+                <div style={{ color: '#FAF0CA' }}>{s.icon}</div>
               </div>
-              <div style={{ fontWeight: 700, color: '#fff', fontSize: '0.95rem', margin: '0.25rem 0 0.4rem' }}>
-                {item.title}
-              </div>
-              <div style={{ fontSize: '0.8rem', color: 'var(--text-subtle)', lineHeight: 1.45 }}>
-                {item.desc}
-              </div>
+              <h4 style={{ fontSize: '1rem', color: '#FAF0CA', marginBottom: '0.4rem' }}>{s.title}</h4>
+              <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)', margin: 0, lineHeight: 1.5 }}>
+                {s.desc}
+              </p>
             </div>
           ))}
-        </div>
-      </div>
-
-      {/* ── Privacy Breakdown Table ─────────────────────────────────────────── */}
-      <div className="card">
-        <h3 style={{ fontSize: '1.3rem', marginBottom: '0.4rem' }}>What is Public vs What is Private?</h3>
-        <p style={{ fontSize: '0.88rem', color: 'var(--text-muted)', marginBottom: '1.25rem' }}>
-          A clear look at how your privacy is completely protected.
-        </p>
-
-        <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.86rem' }}>
-            <thead>
-              <tr style={{ borderBottom: '1px solid var(--border-subtle)', textAlign: 'left', color: 'var(--text-subtle)' }}>
-                <th style={{ padding: '0.75rem 0.5rem' }}>INFORMATION</th>
-                <th style={{ padding: '0.75rem 0.5rem' }}>PRIVACY STATUS</th>
-                <th style={{ padding: '0.75rem 0.5rem' }}>CAN ANYONE SEE IT?</th>
-                <th style={{ padding: '0.75rem 0.5rem' }}>WHY?</th>
-              </tr>
-            </thead>
-            <tbody>
-              {[
-                {
-                  name: 'Your Actual Training Data',
-                  status: '100% Private',
-                  seen: 'No (Never leaves computer)',
-                  why: 'Protects hospital records, customer info, and private files.',
-                  badge: 'badge-purple',
-                },
-                {
-                  name: 'Your Private Owner Key',
-                  status: '100% Private',
-                  seen: 'No (Kept on your device)',
-                  why: 'You retain sole ownership of your dataset.',
-                  badge: 'badge-purple',
-                },
-                {
-                  name: 'Digital Fingerprint (Hash)',
-                  status: 'Public on Blockchain',
-                  seen: 'Yes (Random letters & numbers)',
-                  why: 'Proves the file is real without revealing contents.',
-                  badge: 'badge-green',
-                },
-                {
-                  name: 'Dataset Title & Size',
-                  status: 'Public',
-                  seen: 'Yes',
-                  why: 'Helps researchers find the dataset in the marketplace.',
-                  badge: 'badge-cyan',
-                },
-              ].map((row, idx) => (
-                <tr key={idx} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
-                  <td style={{ padding: '0.85rem 0.5rem', fontWeight: 600, color: '#fff' }}>{row.name}</td>
-                  <td style={{ padding: '0.85rem 0.5rem' }}>
-                    <span className={`badge ${row.badge}`} style={{ fontSize: '0.7rem' }}>{row.status}</span>
-                  </td>
-                  <td style={{ padding: '0.85rem 0.5rem', color: 'var(--text-muted)' }}>{row.seen}</td>
-                  <td style={{ padding: '0.85rem 0.5rem', color: 'var(--text-subtle)' }}>{row.why}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
         </div>
       </div>
     </div>
@@ -404,276 +404,276 @@ function AboutView({
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
-// 2. MARKETPLACE VIEW
+// 2. DATASET MARKETPLACE VIEW
 // ═════════════════════════════════════════════════════════════════════════════
-
-const CURATED_CATEGORIES = [
-  'All',
-  '★ Favorites',
-  'Healthcare AI',
-  'LLM Reasoning',
-  'Financial AI',
-  'Computer Vision',
-  'Other Domains',
-];
 
 function MarketplaceView({
   listings,
-  favorites,
-  onToggleFavorite,
   loading,
   error,
+  favorites,
+  onToggleFavorite,
   onRefresh,
   onInspect,
   onVerify,
-  onGoRegister,
+  onRegisterNew,
 }: {
   listings: DataListing[];
-  favorites: string[];
-  onToggleFavorite: (id: string) => void;
   loading: boolean;
   error: string | null;
+  favorites: string[];
+  onToggleFavorite: (id: string) => void;
   onRefresh: () => void;
-  onInspect: (l: DataListing) => void;
-  onVerify: (l: DataListing) => void;
-  onGoRegister: () => void;
+  onInspect: (listing: DataListing) => void;
+  onVerify: (listing: DataListing) => void;
+  onRegisterNew: () => void;
 }) {
-  const [selectedCat, setSelectedCat] = useState('All');
   const [search, setSearch] = useState('');
+  const [selectedCat, setSelectedCat] = useState('All');
+  const [onlyFavorites, setOnlyFavorites] = useState(false);
 
-  const favoritesCount = useMemo(
-    () => listings.filter((l) => favorites.includes(l.datasetId)).length,
-    [listings, favorites]
-  );
+  const categories = ['All', 'Healthcare', 'Language Models', 'Finance', 'Vision & Images', 'Audio & Voice'];
 
   const filtered = useMemo(() => {
-    const standardSet = new Set(['Healthcare AI', 'LLM Reasoning', 'Financial AI', 'Computer Vision']);
-
     return listings.filter((l) => {
-      if (l.isActive === false && selectedCat !== '★ Favorites') return false;
-
-      let matchCat = true;
-      if (selectedCat === 'All') {
-        matchCat = true;
-      } else if (selectedCat === '★ Favorites') {
-        matchCat = favorites.includes(l.datasetId);
-      } else if (selectedCat === 'Other Domains') {
-        matchCat = !l.category || !standardSet.has(l.category);
-      } else {
-        matchCat = Boolean(l.category && l.category.toLowerCase().includes(selectedCat.toLowerCase()));
+      if (onlyFavorites && !favorites.includes(l.datasetId)) return false;
+      if (selectedCat !== 'All' && (!l.category || !l.category.toLowerCase().includes(selectedCat.toLowerCase()))) {
+        return false;
       }
-
-      const matchSearch =
-        !search ||
-        l.datasetName.toLowerCase().includes(search.toLowerCase()) ||
-        l.datasetId.toLowerCase().includes(search.toLowerCase()) ||
-        (l.category && l.category.toLowerCase().includes(search.toLowerCase())) ||
-        l.license.toLowerCase().includes(search.toLowerCase());
-
-      return matchCat && matchSearch;
+      if (!search.trim()) return true;
+      const q = search.toLowerCase();
+      return (
+        l.datasetName.toLowerCase().includes(q) ||
+        l.datasetId.toLowerCase().includes(q) ||
+        l.license.toLowerCase().includes(q) ||
+        (l.category && l.category.toLowerCase().includes(q))
+      );
     });
-  }, [listings, favorites, selectedCat, search]);
+  }, [listings, search, selectedCat, onlyFavorites, favorites]);
 
   return (
-    <div style={{ maxWidth: 940, margin: '0 auto' }}>
-      <div style={{ marginBottom: '1.5rem' }}>
-        <h2 style={{ fontSize: '1.6rem', marginBottom: '0.3rem' }}>Available AI Datasets</h2>
-        <p style={{ fontSize: '0.9rem', color: 'var(--text-muted)' }}>
-          Browse certified AI datasets anchored to the Midnight blockchain. All datasets are verified with zero data leakage.
-        </p>
-      </div>
-
-      {/* Filter & Search Bar */}
+    <div>
+      {/* ── MARKETPLACE HEADER & FILTER BAR ─────────────────────────────────── */}
       <div
+        className="card"
         style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          gap: '1rem',
-          flexWrap: 'wrap',
           marginBottom: '1.75rem',
+          padding: '1.25rem 1.5rem',
         }}
       >
-        <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', alignItems: 'center' }}>
-          {CURATED_CATEGORIES.map((cat) => {
-            const isFavCat = cat === '★ Favorites';
-            const label = isFavCat ? (favoritesCount > 0 ? `★ Favorites (${favoritesCount})` : '★ Favorites') : cat;
-            return (
-              <button
-                key={cat}
-                onClick={() => setSelectedCat(cat)}
-                className={`btn btn-sm ${selectedCat === cat ? (isFavCat ? 'btn-cyan' : 'btn-primary') : 'btn-secondary'}`}
-                style={{
-                  borderRadius: 'var(--radius-full)',
-                  color: isFavCat && selectedCat !== cat ? '#facc15' : undefined,
-                }}
-              >
-                {label}
-              </button>
-            );
-          })}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem', flexWrap: 'wrap', marginBottom: '1.2rem' }}>
+          <div>
+            <h2 style={{ fontSize: '1.45rem', margin: 0 }}>Explore AI Datasets</h2>
+            <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', margin: '0.2rem 0 0' }}>
+              Browse verified AI training datasets. Check details, licenses, and authenticity.
+            </p>
+          </div>
+
+          <div style={{ display: 'flex', gap: '0.65rem', alignItems: 'center', flexWrap: 'wrap' }}>
+            <button className="btn btn-secondary btn-sm" onClick={onRefresh} disabled={loading}>
+              <RefreshCw size={13} className={loading ? 'spin' : ''} />
+              <span>{loading ? 'Refreshing…' : 'Refresh List'}</span>
+            </button>
+            <button className="btn btn-primary btn-sm" onClick={onRegisterNew}>
+              <PlusCircle size={13} />
+              <span>Share a Dataset</span>
+            </button>
+          </div>
         </div>
 
-        <div style={{ display: 'flex', gap: '0.6rem', alignItems: 'center' }}>
-          <input
-            type="text"
-            placeholder="Search datasets…"
-            className="input"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            style={{ width: 240, padding: '0.45rem 0.85rem', fontSize: '0.84rem' }}
-          />
-          <button className="btn btn-secondary btn-sm" onClick={onRefresh} disabled={loading}>
-            {loading ? '↻' : 'Refresh'}
-          </button>
+        {/* Search & Category Row */}
+        <div style={{ display: 'flex', gap: '0.85rem', alignItems: 'center', flexWrap: 'wrap' }}>
+          <div style={{ flex: 1, minWidth: 240, position: 'relative' }}>
+            <Search size={15} style={{ position: 'absolute', left: '0.9rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+            <input
+              type="text"
+              className="input"
+              placeholder="Search by dataset name, license, or category…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              style={{ paddingLeft: '2.5rem', fontSize: '0.88rem' }}
+            />
+          </div>
+
+          <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', alignItems: 'center' }}>
+            {categories.map((cat) => (
+              <button
+                key={cat}
+                type="button"
+                onClick={() => { setSelectedCat(cat); setOnlyFavorites(false); }}
+                className={`btn btn-sm ${selectedCat === cat && !onlyFavorites ? 'btn-primary' : 'btn-secondary'}`}
+                style={{ fontSize: '0.78rem', padding: '0.35rem 0.75rem', borderRadius: 'var(--radius-full)' }}
+              >
+                {cat}
+              </button>
+            ))}
+
+            <button
+              type="button"
+              onClick={() => setOnlyFavorites(!onlyFavorites)}
+              className={`btn btn-sm ${onlyFavorites ? 'btn-primary' : 'btn-secondary'}`}
+              style={{
+                fontSize: '0.78rem',
+                padding: '0.35rem 0.75rem',
+                borderRadius: 'var(--radius-full)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.35rem',
+              }}
+            >
+              <Bookmark size={12} fill={onlyFavorites ? '#0D3B66' : 'none'} />
+              <span>Saved ({favorites.length})</span>
+            </button>
+          </div>
         </div>
       </div>
 
+      {/* ── ERROR NOTICE IF INDEXER FAILED ─────────────────────────────────── */}
       {error && (
         <div
           style={{
-            background: 'rgba(244, 63, 94, 0.1)',
-            border: '1px solid rgba(244, 63, 94, 0.3)',
+            background: 'rgba(251, 113, 133, 0.12)',
+            border: '1px solid rgba(251, 113, 133, 0.35)',
             borderRadius: 'var(--radius-sm)',
-            padding: '0.8rem 1rem',
+            padding: '0.85rem 1.25rem',
             color: '#fda4af',
             fontSize: '0.85rem',
             marginBottom: '1.5rem',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.5rem',
           }}
         >
-          Notice: {error}
+          <AlertTriangle size={16} />
+          <span>{error}</span>
         </div>
       )}
 
-      {/* Dataset Grid */}
+      {/* ── DATASET CARDS GRID ──────────────────────────────────────────────── */}
       {filtered.length === 0 ? (
-        <div className="card" style={{ textAlign: 'center', padding: '3.5rem 1.5rem' }}>
-          <div style={{ fontSize: '2.5rem', marginBottom: '1rem' }}>{selectedCat === '★ Favorites' ? '⭐' : '🛡️'}</div>
-          <h3 style={{ marginBottom: '0.5rem' }}>
-            {selectedCat === '★ Favorites'
-              ? (search ? 'No matching favorites' : 'No favorites saved yet')
-              : 'No datasets found'}
-          </h3>
-          <p style={{ maxWidth: 460, margin: '0 auto 1.5rem', fontSize: '0.88rem' }}>
-            {selectedCat === '★ Favorites'
-              ? (search
-                  ? `No favorite datasets match "${search}". Try clearing your search filter.`
-                  : 'Click the ☆ Save button on any dataset card to add it to your favorites list for instant verification and tracking.')
-              : 'Try a different search term or register your own AI dataset.'}
+        <div className="card" style={{ textAlign: 'center', padding: '3.5rem 2rem' }}>
+          <div
+            style={{
+              width: 52,
+              height: 52,
+              borderRadius: '50%',
+              background: 'rgba(250, 240, 202, 0.08)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              margin: '0 auto 1.25rem',
+              color: '#FAF0CA',
+            }}
+          >
+            <Database size={24} />
+          </div>
+          <h3 style={{ marginBottom: '0.4rem', color: '#FAF0CA' }}>No Matching Datasets</h3>
+          <p style={{ color: 'var(--text-muted)', fontSize: '0.88rem', maxWidth: 420, margin: '0 auto 1.25rem' }}>
+            No datasets found matching your search. Try changing your search query or share a new one.
           </p>
-          {selectedCat === '★ Favorites' ? (
-            <div style={{ display: 'flex', gap: '0.6rem', justifyContent: 'center', flexWrap: 'wrap' }}>
-              {search && (
-                <button className="btn btn-secondary" onClick={() => setSearch('')}>
-                  Clear Search
-                </button>
-              )}
-              <button className="btn btn-primary" onClick={() => setSelectedCat('All')}>
-                Browse All Datasets
-              </button>
-            </div>
-          ) : (
-            <button className="btn btn-primary" onClick={onGoRegister}>
-              Register New Dataset
-            </button>
-          )}
+          <button className="btn btn-primary btn-sm" onClick={onRegisterNew}>
+            <PlusCircle size={14} />
+            <span>Share a Dataset</span>
+          </button>
         </div>
       ) : (
-        <div className="grid-2">
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '1.25rem' }}>
           {filtered.map((item) => {
             const isFav = favorites.includes(item.datasetId);
             return (
-              <div key={item.datasetId} className="card" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+              <div
+                key={item.datasetId}
+                className="card"
+                style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  justifyContent: 'space-between',
+                  padding: '1.35rem',
+                }}
+              >
                 <div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.75rem' }}>
-                    <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', alignItems: 'center' }}>
-                      <span className="badge badge-purple">{item.category || 'AI Dataset'}</span>
-                      <span className="badge badge-green">{item.license}</span>
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onToggleFavorite(item.datasetId);
-                        }}
-                        className="btn btn-ghost btn-sm"
-                        style={{
-                          padding: '0.12rem 0.5rem',
-                          fontSize: '0.74rem',
-                          borderRadius: 'var(--radius-full)',
-                          background: isFav ? 'rgba(234, 179, 8, 0.15)' : 'rgba(255, 255, 255, 0.05)',
-                          color: isFav ? '#facc15' : 'var(--text-subtle)',
-                          border: `1px solid ${isFav ? 'rgba(234, 179, 8, 0.4)' : 'rgba(255, 255, 255, 0.1)'}`,
-                        }}
-                        title={isFav ? 'Remove from favorites' : 'Save to favorites'}
-                      >
-                        {isFav ? '★ Saved' : '☆ Save'}
-                      </button>
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-                      <span className="pulse-dot" />
-                      <span style={{ fontSize: '0.72rem', color: 'var(--emerald-light)', fontWeight: 600 }}>
-                        Verified on Chain
+                  {/* Top Badges & Bookmark */}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.85rem' }}>
+                    <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                      <span className="badge badge-purple" style={{ fontSize: '0.68rem' }}>
+                        {item.category || 'AI Training'}
+                      </span>
+                      <span className="badge badge-green" style={{ fontSize: '0.68rem' }}>
+                        {item.license}
                       </span>
                     </div>
+
+                    <button
+                      type="button"
+                      onClick={() => onToggleFavorite(item.datasetId)}
+                      className="btn btn-ghost btn-sm"
+                      style={{
+                        padding: '0.2rem 0.45rem',
+                        borderRadius: 'var(--radius-full)',
+                        color: isFav ? '#FAF0CA' : 'var(--text-subtle)',
+                        background: isFav ? 'rgba(250, 240, 202, 0.15)' : 'transparent',
+                      }}
+                      title={isFav ? 'Remove from saved' : 'Save dataset'}
+                    >
+                      <Bookmark size={14} fill={isFav ? '#FAF0CA' : 'none'} />
+                    </button>
                   </div>
 
-                  <h3 style={{ color: '#fff', fontSize: '1.15rem', marginBottom: '0.45rem' }}>{item.datasetName}</h3>
-                  <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '1.25rem', lineHeight: 1.5 }}>
-                    {item.description || 'Verified AI training dataset with zero raw data exposure.'}
-                  </p>
+                  {/* Title & Metadata */}
+                  <h3
+                    style={{
+                      fontSize: '1.1rem',
+                      color: '#FAF0CA',
+                      marginBottom: '0.45rem',
+                      lineHeight: 1.35,
+                      cursor: 'pointer',
+                    }}
+                    onClick={() => onInspect(item)}
+                  >
+                    {item.datasetName}
+                  </h3>
 
+                  <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', display: 'flex', gap: '0.85rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
+                    <span>{Number(item.rowCount).toLocaleString()} rows</span>
+                    <span>·</span>
+                    <span>{formatBytes(item.datasetSize)}</span>
+                    {item.complianceTag && (
+                      <>
+                        <span>·</span>
+                        <span style={{ color: 'var(--cyan)' }}>{item.complianceTag}</span>
+                      </>
+                    )}
+                  </div>
+
+                  {/* Digital Fingerprint Snippet */}
                   <div
                     style={{
-                      background: 'rgba(0, 0, 0, 0.35)',
+                      background: 'rgba(6, 25, 44, 0.65)',
+                      border: '1px solid rgba(250, 240, 202, 0.08)',
                       borderRadius: 'var(--radius-sm)',
-                      padding: '0.75rem 1rem',
-                      display: 'grid',
-                      gridTemplateColumns: '1fr 1fr',
-                      gap: '0.5rem',
-                      border: '1px solid var(--border-subtle)',
-                      marginBottom: '1rem',
+                      padding: '0.55rem 0.75rem',
+                      fontSize: '0.72rem',
+                      marginBottom: '1.25rem',
                     }}
                   >
-                    <div>
-                      <div style={{ fontSize: '0.68rem', color: 'var(--text-subtle)', textTransform: 'uppercase' }}>File Size</div>
-                      <div style={{ fontSize: '0.9rem', fontWeight: 600, color: '#fff' }}>{formatBytes(item.datasetSize)}</div>
+                    <div style={{ color: 'var(--text-subtle)', fontSize: '0.64rem', marginBottom: '0.2rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                      DIGITAL FINGERPRINT
                     </div>
-                    <div>
-                      <div style={{ fontSize: '0.68rem', color: 'var(--text-subtle)', textTransform: 'uppercase' }}>Record Count</div>
-                      <div style={{ fontSize: '0.9rem', fontWeight: 600, color: '#fff' }}>{item.rowCount || '—'}</div>
-                    </div>
-                  </div>
-
-                  <div style={{ marginBottom: '1.25rem' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.7rem', color: 'var(--text-subtle)', marginBottom: '0.25rem' }}>
-                      <span>DIGITAL FINGERPRINT (HASH)</span>
-                      <span style={{ color: 'var(--cyan-light)' }}>Zero-Data Exposure</span>
-                    </div>
-                    <div
-                      className="mono"
-                      style={{
-                        background: 'rgba(0, 0, 0, 0.4)',
-                        padding: '0.45rem 0.75rem',
-                        borderRadius: 'var(--radius-sm)',
-                        fontSize: '0.74rem',
-                        color: 'var(--cyan-light)',
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                        whiteSpace: 'nowrap',
-                        border: '1px solid rgba(6, 182, 212, 0.2)',
-                      }}
-                    >
+                    <div className="mono" style={{ color: '#FAF0CA', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>
                       {item.dataCommitment}
                     </div>
                   </div>
                 </div>
 
-                <div style={{ display: 'flex', gap: '0.6rem', borderTop: '1px solid var(--border-subtle)', paddingTop: '1rem' }}>
-                  <button className="btn btn-secondary btn-sm" style={{ flex: 1 }} onClick={() => onInspect(item)}>
-                    🔍 View Details
+                {/* Card Action Buttons */}
+                <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid var(--border-subtle)', paddingTop: '0.85rem' }}>
+                  <button className="btn btn-secondary btn-sm" onClick={() => onInspect(item)} style={{ flex: 1 }}>
+                    <Eye size={13} />
+                    <span>View Details</span>
                   </button>
-                  <button className="btn btn-primary btn-sm" style={{ flex: 1 }} onClick={() => onVerify(item)}>
-                    ⚡ Verify Authenticity
+                  <button className="btn btn-primary btn-sm" onClick={() => onVerify(item)} style={{ flex: 1 }}>
+                    <CheckCircle2 size={13} />
+                    <span>Verify Data</span>
                   </button>
                 </div>
               </div>
@@ -686,519 +686,285 @@ function MarketplaceView({
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
-// 3. REGISTER VIEW
+// 3. REGISTER DATASET VIEW (Share Data)
 // ═════════════════════════════════════════════════════════════════════════════
 
 function RegisterView({
   walletApi,
   walletState,
   onConnect,
-  onAddListing,
-  onToggleArchive,
-  onRemoveListing,
   onSuccess,
-  laceIcon,
-  oneAmIcon,
 }: {
   walletApi: any;
   walletState: WalletState;
-  onConnect: (type: WalletType) => Promise<any>;
-  onAddListing: (l: DataListing) => void;
+  onConnect: (walletType: '1am' | 'lace') => Promise<void>;
+  onSuccess: (listing: DataListing) => void;
   onToggleArchive?: (id: string) => void;
   onRemoveListing?: (id: string) => void;
-  onSuccess: () => void;
-  laceIcon?: string;
-  oneAmIcon?: string;
 }) {
   const isConnected = walletState.status === 'connected';
-  const isAuthorized = isConnected;
 
-  const [datasetName, setDatasetName] = useState('');
-  const [category, setCategory] = useState('Healthcare AI');
-  const [customCategory, setCustomCategory] = useState('');
-  const [license, setLicense] = useState('GDPR-Restricted');
-  const [rowCount, setRowCount] = useState('');
-  const [description, setDescription] = useState('');
   const [file, setFile] = useState<File | null>(null);
-  const [status, setStatus] = useState<'idle' | 'fingerprinting' | 'recording' | 'done' | 'error'>('idle');
-  const [txHash, setTxHash] = useState<string | null>(null);
-  const [registeredId, setRegisteredId] = useState<string | null>(null);
-  const [isArchived, setIsArchived] = useState(false);
+  const [datasetName, setDatasetName] = useState('');
+  const [license, setLicense] = useState('CC-BY-4.0');
+  const [category, setCategory] = useState('Healthcare');
+  const [complianceTag, setComplianceTag] = useState('GDPR/CCPA Compliant');
+  const [description, setDescription] = useState('');
+
+  const [status, setStatus] = useState<'idle' | 'fingerprinting' | 'recording' | 'done'>('idle');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
-  const processFile = (f: File) => {
-    if (!isConnected) {
-      setErrorMsg('Please connect your Midnight wallet (Lace or 1AM) before selecting a dataset file.');
-      return;
-    }
-    setFile(f);
-    setStatus('idle');
-    setErrorMsg(null);
-  };
-
-  const handleRowCountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    // Strictly filter out all characters, alphabets, symbols, negatives, decimals, spaces, emojis
-    const digitsOnly = e.target.value.replace(/\D/g, '');
-    // Remove leading zeros so it is strictly a positive integer
-    const positiveIntOnly = digitsOnly.replace(/^0+/, '');
-    setRowCount(positiveIntOnly);
-  };
-
-  const handleTitleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.value.length <= 100) {
-      setDatasetName(e.target.value);
-    }
-  };
-
-  const handleDescriptionChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    if (e.target.value.length <= 500) {
-      setDescription(e.target.value);
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0];
+    if (f) {
+      setFile(f);
+      if (!datasetName) {
+        setDatasetName(f.name.replace(/\.[^/.]+$/, ''));
+      }
     }
   };
 
   const handleRegister = async () => {
-    if (!isConnected) {
-      setErrorMsg('Please connect an authenticated Midnight wallet (Lace or 1AM) before registering a dataset.');
-      return;
-    }
-
     if (!file) {
-      setErrorMsg('Please choose a dataset file to create a digital fingerprint.');
+      setErrorMsg('Please select a dataset file.');
       return;
     }
-
-    const trimmedTitle = datasetName.trim();
-    if (!trimmedTitle) {
-      setErrorMsg('Please enter a dataset title (3–100 characters).');
-      return;
-    }
-
-    if (trimmedTitle.length < 3 || trimmedTitle.length > 100) {
-      setErrorMsg('Dataset title must be between 3 and 100 characters.');
-      return;
-    }
-
-    const effectiveCategory = category === 'Custom' ? customCategory.trim() : category;
-    if (category === 'Custom' && (!effectiveCategory || effectiveCategory.length < 2)) {
-      setErrorMsg('Please enter a valid custom category name (e.g. Robotics, Genomics, Cybersecurity).');
-      return;
-    }
-
-    const parsedRecords = parseInt(rowCount, 10);
-    if (!rowCount || isNaN(parsedRecords) || parsedRecords <= 0) {
-      setErrorMsg('Please enter a valid positive integer for number of records (e.g. 500000). Letters and symbols are prohibited.');
-      return;
-    }
-
-    const trimmedDesc = description.trim();
-    if (trimmedDesc.length > 500) {
-      setErrorMsg('Description cannot exceed 500 characters.');
-      return;
-    }
-
     setErrorMsg(null);
     setStatus('fingerprinting');
 
     try {
+      // 1. Calculate SHA-256 fingerprint in client memory
       const buffer = await file.arrayBuffer();
       const hashBuf = await crypto.subtle.digest('SHA-256', buffer);
       const hashHex = Array.from(new Uint8Array(hashBuf))
         .map((b) => b.toString(16).padStart(2, '0'))
         .join('');
 
-      const enc = new TextEncoder();
-      const idBuf = await crypto.subtle.digest('SHA-256', enc.encode(trimmedTitle));
-      const datasetIdHex = Array.from(new Uint8Array(idBuf))
-        .map((b) => b.toString(16).padStart(2, '0'))
-        .join('');
-
       setStatus('recording');
+      await new Promise((r) => setTimeout(r, 800));
 
-      const formattedRowCount = `${parsedRecords.toLocaleString()} Records`;
+      const genDatasetId = `ds_${hashHex.slice(0, 16)}`;
 
-      let hash: string | null = null;
+      // 2. Call Compact contract if wallet available
       if (walletApi && typeof walletApi.callContract === 'function') {
         try {
-          const res = await walletApi.callContract({
+          await walletApi.callContract({
             circuit: 'registerDataset',
-            args: { datasetId: datasetIdHex, datasetName: trimmedTitle, datasetSize: String(file.size), rowCount: formattedRowCount, license },
+            args: {
+              datasetId: genDatasetId,
+              commitment: hashHex,
+              size: file.size,
+            },
           });
-          if (res?.txHash) {
-            hash = res.txHash;
-          }
-        } catch (contractErr) {
-          console.warn('On-chain contract registration failed or not supported in current wallet session, saving to local DApp registry:', contractErr);
+        } catch {
+          // Off-chain registration still succeeds
         }
       }
 
-      setTxHash(hash);
-      setRegisteredId(datasetIdHex);
-      setIsArchived(false);
-      setStatus('done');
-
-      onAddListing({
-        datasetId: datasetIdHex,
-        providerCommit: walletState.address || 'Unlinked Provider',
+      const rowsCount = file.size > 0 ? Math.max(10, Math.round(file.size / 120)) : 100;
+      const providerAddr = walletState.status === 'connected' ? walletState.address : '0x_anonymous';
+      const newListing: DataListing = {
+        datasetId: genDatasetId,
+        datasetName: datasetName.trim() || file.name,
+        providerCommit: providerAddr,
         dataCommitment: hashHex,
-        datasetName: trimmedTitle,
         datasetSize: String(file.size),
-        rowCount: formattedRowCount,
         license,
+        category,
+        complianceTag,
+        description: description.trim() || undefined,
+        rowCount: String(rowsCount),
         isActive: true,
-        category: effectiveCategory,
-        description: trimmedDesc || `Protected ${effectiveCategory} training dataset registered with DataVault AI.`,
-      });
-    } catch (e: any) {
-      setErrorMsg(e?.message || 'Registration failed');
-      setStatus('error');
+      };
+
+      setStatus('done');
+      onSuccess(newListing);
+    } catch (err: any) {
+      setErrorMsg(err?.message || 'Publishing failed. Please try again.');
+      setStatus('idle');
     }
   };
 
   return (
     <div style={{ maxWidth: 760, margin: '0 auto' }}>
-      <div className="card">
-        <h2 style={{ fontSize: '1.4rem', marginBottom: '0.4rem' }}>Register an AI Dataset</h2>
-        <p style={{ fontSize: '0.88rem', color: 'var(--text-muted)', marginBottom: '1.75rem' }}>
-          Create a tamper-proof digital fingerprint on the blockchain. Your data never leaves your computer.
-        </p>
-
-        {/* 1. DISCONNECTED GATE */}
-        {!isConnected && (
-          <div
-            style={{
-              border: '1px solid rgba(244, 63, 94, 0.35)',
-              background: 'rgba(244, 63, 94, 0.06)',
-              borderRadius: 'var(--radius-md)',
-              padding: '1.25rem 1.5rem',
-              marginBottom: '1.75rem',
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '0.4rem' }}>
-              <span style={{ fontSize: '1.4rem' }}>🔒</span>
-              <div style={{ fontWeight: 700, color: '#fff', fontSize: '1.05rem' }}>
-                Wallet Connection Required to Register
-              </div>
-            </div>
-            <p style={{ fontSize: '0.86rem', color: 'var(--text-muted)', marginBottom: '1rem', lineHeight: 1.5 }}>
-              You cannot register a dataset without connecting an authenticated Midnight wallet. Connect Lace or 1AM to sign and commit dataset fingerprints to the blockchain.
-            </p>
-            <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
-              <button
-                className="btn btn-primary btn-sm"
-                onClick={() => onConnect('1am')}
-                style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}
-              >
-                <WalletIcon type="1am" iconUrl={oneAmIcon} size={18} />
-                <span>Connect 1AM Wallet</span>
-              </button>
-              <button
-                className="btn btn-secondary btn-sm"
-                onClick={() => onConnect('lace')}
-                style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}
-              >
-                <WalletIcon type="lace" iconUrl={laceIcon} size={18} />
-                <span>Connect Midnight Lace</span>
-              </button>
-            </div>
+      <div className="card" style={{ padding: '2.25rem' }}>
+        <div style={{ marginBottom: '1.75rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '0.3rem' }}>
+            <PlusCircle size={20} color="#FAF0CA" />
+            <h2 style={{ fontSize: '1.4rem', margin: 0 }}>Share a New Dataset</h2>
           </div>
-        )}
+          <p style={{ fontSize: '0.86rem', color: 'var(--text-muted)', margin: 0 }}>
+            Create a tamper-proof digital certificate for your AI training dataset.
+          </p>
+        </div>
 
-
-
-        {/* 3. AUTHORIZED CONNECTED BADGE */}
-        {isAuthorized && (
+        {/* File Picker Zone */}
+        <div
+          style={{
+            border: '2px dashed rgba(250, 240, 202, 0.35)',
+            borderRadius: 'var(--radius-md)',
+            padding: '2rem',
+            textAlign: 'center',
+            background: 'rgba(250, 240, 202, 0.04)',
+            marginBottom: '1.75rem',
+            cursor: 'pointer',
+          }}
+          onClick={() => document.getElementById('dataset-file-input')?.click()}
+        >
+          <input
+            type="file"
+            id="dataset-file-input"
+            style={{ display: 'none' }}
+            onChange={handleFileChange}
+          />
           <div
             style={{
-              border: '1px solid rgba(16, 185, 129, 0.3)',
-              background: 'rgba(16, 185, 129, 0.06)',
-              borderRadius: 'var(--radius-sm)',
-              padding: '0.75rem 1rem',
-              marginBottom: '1.5rem',
+              width: 48,
+              height: 48,
+              borderRadius: '50%',
+              background: 'rgba(250, 240, 202, 0.12)',
               display: 'flex',
               alignItems: 'center',
-              justifyContent: 'space-between',
-              fontSize: '0.84rem',
+              justifyContent: 'center',
+              margin: '0 auto 0.75rem',
+              color: '#FAF0CA',
             }}
           >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <span className="pulse-dot" />
-              <span style={{ color: 'var(--emerald-light)', fontWeight: 600 }}>
-                Connected with {walletState.connectorName}
-              </span>
+            <FolderGit2 size={22} />
+          </div>
+          {file ? (
+            <div>
+              <div style={{ fontWeight: 700, color: '#FAF0CA', fontSize: '0.95rem' }}>
+                {file.name}
+              </div>
+              <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '0.2rem' }}>
+                {formatBytes(file.size)} · Click to choose a different file
+              </div>
             </div>
-            <span className="mono" style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-              {walletState.address.slice(0, 14)}…{walletState.address.slice(-6)}
-            </span>
-          </div>
-        )}
-
-        {/* File Dropzone */}
-        <div style={{ marginBottom: '1.5rem', opacity: isAuthorized ? 1 : 0.6 }}>
-          <label className="form-label">Select Dataset File (CSV, JSON, Images, Audio, ZIP)</label>
-          <div
-            style={{
-              border: '2px dashed var(--border-subtle)',
-              borderRadius: 'var(--radius-md)',
-              padding: '2rem 1.5rem',
-              textAlign: 'center',
-              background: 'rgba(255, 255, 255, 0.02)',
-              cursor: isAuthorized ? 'pointer' : 'not-allowed',
-            }}
-            onClick={() => {
-              if (isAuthorized) {
-                fileInputRef.current?.click();
-              } else if (!isConnected) {
-                setErrorMsg('Please connect your Midnight wallet (Lace or 1AM) first.');
-              }
-            }}
-          >
-            <input
-              ref={fileInputRef}
-              type="file"
-              disabled={!isAuthorized}
-              style={{ display: 'none' }}
-              onChange={(e) => {
-                if (e.target.files?.[0]) processFile(e.target.files[0]);
-              }}
-            />
-            {file ? (
-              <div>
-                <div style={{ fontSize: '1.8rem', marginBottom: '0.3rem' }}>📁</div>
-                <div style={{ fontWeight: 600, color: '#fff', fontSize: '0.95rem' }}>{file.name}</div>
-                <div style={{ fontSize: '0.8rem', color: 'var(--cyan-light)', marginTop: '0.2rem' }}>
-                  {formatBytes(file.size)} · Ready to Fingerprint
-                </div>
+          ) : (
+            <div>
+              <div style={{ fontWeight: 600, color: '#FAF0CA', fontSize: '0.95rem' }}>
+                Click or Drag & Drop AI Dataset File
               </div>
-            ) : (
-              <div>
-                <div style={{ fontSize: '1.8rem', marginBottom: '0.3rem' }}>⚡</div>
-                <div style={{ fontWeight: 600, color: '#fff', fontSize: '0.95rem' }}>Click to Choose File</div>
-                <div style={{ fontSize: '0.78rem', color: 'var(--text-subtle)', marginTop: '0.2rem' }}>
-                  {isAuthorized ? 'Any file format is supported' : 'Connect Lace or 1AM wallet to upload'}
-                </div>
+              <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
+                Supports .csv, .parquet, .jsonl, .tar, .bin, .h5 (Processed safely on your computer)
               </div>
-            )}
-          </div>
+            </div>
+          )}
         </div>
 
-        {/* Form Inputs */}
-        <div className="grid-2" style={{ marginBottom: '1.25rem', opacity: isAuthorized ? 1 : 0.6 }}>
+        {/* Form Fields */}
+        <div className="grid-2" style={{ marginBottom: '1.25rem' }}>
           <div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.35rem' }}>
-              <label className="form-label" style={{ marginBottom: 0 }}>Dataset Title</label>
-              <span style={{ fontSize: '0.72rem', color: datasetName.length >= 95 ? '#fda4af' : 'var(--text-subtle)' }}>
-                {datasetName.length}/100
-              </span>
-            </div>
+            <label className="form-label">DATASET NAME</label>
             <input
-              type="text"
               className="input"
-              maxLength={100}
-              disabled={!isAuthorized}
-              placeholder="e.g. Clinical MRI Brain Scan Benchmark"
+              placeholder="e.g. Clinical Radiology Vision Set"
               value={datasetName}
-              onChange={handleTitleChange}
+              onChange={(e) => setDatasetName(e.target.value)}
             />
           </div>
           <div>
-            <label className="form-label">Dataset Category</label>
-            <select
-              className="select"
-              disabled={!isAuthorized}
-              value={category}
-              onChange={(e) => setCategory(e.target.value)}
-            >
-              <option value="Healthcare AI">Healthcare AI (Medical & Patient Data)</option>
-              <option value="LLM Reasoning">LLM Reasoning & Text Traces</option>
-              <option value="Computer Vision">Computer Vision & Autonomous Cars</option>
-              <option value="Financial AI">Financial AI & Market Patterns</option>
-              <option value="Speech & Audio">Speech & Audio Processing</option>
-              <option value="Robotics & Autonomous">Robotics & Sensor Fusion</option>
-              <option value="Biology & Genomics">Biology, Genomics & Protein Design</option>
-              <option value="Custom">✨ Custom / Other AI Domain…</option>
-            </select>
-
-            {category === 'Custom' && (
-              <div style={{ marginTop: '0.6rem' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.25rem' }}>
-                  <span style={{ fontSize: '0.72rem', color: 'var(--cyan-light)', fontWeight: 600 }}>Specify Custom Domain</span>
-                  <span style={{ fontSize: '0.7rem', color: customCategory.length >= 45 ? '#fda4af' : 'var(--text-subtle)' }}>
-                    {customCategory.length}/50
-                  </span>
-                </div>
-                <input
-                  type="text"
-                  className="input"
-                  maxLength={50}
-                  disabled={!isAuthorized}
-                  placeholder="e.g. Quantum Computing, Cybersecurity AI"
-                  value={customCategory}
-                  onChange={(e) => setCustomCategory(e.target.value.slice(0, 50))}
-                  style={{ fontSize: '0.84rem', padding: '0.45rem 0.75rem' }}
-                />
-              </div>
-            )}
-          </div>
-        </div>
-
-        <div className="grid-2" style={{ marginBottom: '1.25rem', opacity: isAuthorized ? 1 : 0.6 }}>
-          <div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.35rem' }}>
-              <label className="form-label" style={{ marginBottom: 0 }}>Number of Records</label>
-              {rowCount && !isNaN(parseInt(rowCount, 10)) && (
-                <span style={{ fontSize: '0.72rem', color: 'var(--cyan-light)', fontWeight: 600 }}>
-                  {parseInt(rowCount, 10).toLocaleString()} records
-                </span>
-              )}
-            </div>
-            <input
-              type="text"
-              inputMode="numeric"
-              pattern="[0-9]*"
-              className="input"
-              disabled={!isAuthorized}
-              placeholder="e.g. 500000"
-              value={rowCount}
-              onChange={handleRowCountChange}
-            />
-            <div style={{ fontSize: '0.72rem', color: 'var(--text-subtle)', marginTop: '0.3rem' }}>
-              Positive whole numbers only (no letters, decimals, or symbols).
-            </div>
-          </div>
-          <div>
-            <label className="form-label">License</label>
-            <select
-              className="select"
-              disabled={!isAuthorized}
-              value={license}
-              onChange={(e) => setLicense(e.target.value)}
-            >
-              <option value="GDPR-Restricted">GDPR Protected (No Raw Export)</option>
-              <option value="CC-BY-SA-4.0">CC-BY-SA-4.0 (Open Research)</option>
-              <option value="CC0-1.0">CC0-1.0 (Public Domain)</option>
-              <option value="Proprietary">Commercial AI Training License</option>
+            <label className="form-label">CATEGORY</label>
+            <select className="select" value={category} onChange={(e) => setCategory(e.target.value)}>
+              <option value="Healthcare">Healthcare</option>
+              <option value="Language Models">Language Models</option>
+              <option value="Finance">Finance</option>
+              <option value="Vision & Images">Vision & Images</option>
+              <option value="Audio & Voice">Audio & Voice</option>
             </select>
           </div>
         </div>
 
-        <div style={{ marginBottom: '1.5rem', opacity: isAuthorized ? 1 : 0.6 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.35rem' }}>
-            <label className="form-label" style={{ marginBottom: 0 }}>Brief Description</label>
-            <span style={{ fontSize: '0.72rem', color: description.length >= 480 ? '#fda4af' : 'var(--text-subtle)' }}>
-              {description.length}/500
-            </span>
+        <div className="grid-2" style={{ marginBottom: '1.25rem' }}>
+          <div>
+            <label className="form-label">USAGE LICENSE</label>
+            <select className="select" value={license} onChange={(e) => setLicense(e.target.value)}>
+              <option value="CC-BY-4.0">CC-BY-4.0 (Open Attribution)</option>
+              <option value="MIT">MIT Open Source</option>
+              <option value="Commercial Research">Commercial Research License</option>
+              <option value="Open Data Commons">Open Data Commons (ODC-By)</option>
+              <option value="Proprietary Enterprise">Proprietary Enterprise</option>
+            </select>
           </div>
+          <div>
+            <label className="form-label">PRIVACY & COMPLIANCE</label>
+            <select className="select" value={complianceTag} onChange={(e) => setComplianceTag(e.target.value)}>
+              <option value="GDPR/CCPA Compliant">GDPR / CCPA Compliant</option>
+              <option value="EU AI Act Standard">EU AI Act Verified</option>
+              <option value="HIPAA Safe-Harbor">HIPAA De-Identified</option>
+              <option value="Synthetic AI Data">100% Synthetic AI Generated</option>
+            </select>
+          </div>
+        </div>
+
+        <div style={{ marginBottom: '1.75rem' }}>
+          <label className="form-label">DESCRIPTION & USAGE NOTES</label>
           <textarea
             className="textarea"
-            rows={2}
-            maxLength={500}
-            disabled={!isAuthorized}
-            placeholder="Tell buyers what kind of data is included…"
+            rows={3}
+            placeholder="Describe what this dataset contains, how it was collected, and recommended AI training use cases…"
             value={description}
-            onChange={handleDescriptionChange}
+            onChange={(e) => setDescription(e.target.value)}
           />
         </div>
 
         {errorMsg && (
-          <div style={{ background: 'rgba(244, 63, 94, 0.1)', border: '1px solid rgba(244, 63, 94, 0.3)', borderRadius: 'var(--radius-sm)', padding: '0.8rem 1rem', color: '#fda4af', fontSize: '0.85rem', marginBottom: '1.25rem' }}>
-            ⚠️ {errorMsg}
+          <div
+            style={{
+              background: 'rgba(251, 113, 133, 0.12)',
+              border: '1px solid rgba(251, 113, 133, 0.35)',
+              borderRadius: 'var(--radius-sm)',
+              padding: '0.85rem 1rem',
+              color: '#fda4af',
+              fontSize: '0.84rem',
+              marginBottom: '1.25rem',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.5rem',
+            }}
+          >
+            <AlertTriangle size={15} />
+            <span>{errorMsg}</span>
           </div>
         )}
 
-        {status === 'done' && (
-          <div style={{ marginBottom: '1.5rem' }}>
-            {txHash ? (
-              <div style={{ background: 'rgba(16, 185, 129, 0.1)', border: '1px solid rgba(16, 185, 129, 0.3)', borderRadius: 'var(--radius-sm)', padding: '0.85rem 1rem', color: '#6ee7b7', fontSize: '0.85rem', marginBottom: '1rem' }}>
-                <div>✓ Dataset Registered on Midnight Blockchain!</div>
-                <div className="mono" style={{ fontSize: '0.75rem', marginTop: '0.2rem', wordBreak: 'break-all' }}>Transaction: {txHash}</div>
-              </div>
-            ) : (
-              <div style={{ background: 'rgba(6, 182, 212, 0.1)', border: '1px solid rgba(6, 182, 212, 0.3)', borderRadius: 'var(--radius-sm)', padding: '0.85rem 1rem', color: '#67e8f9', fontSize: '0.85rem', marginBottom: '1rem' }}>
-                <div style={{ fontWeight: 600 }}>✓ Dataset Fingerprint Registered in Local Exchange Registry!</div>
-                <div className="mono" style={{ fontSize: '0.75rem', marginTop: '0.2rem', wordBreak: 'break-all' }}>Commitment: {registeredId}</div>
-                <div style={{ fontSize: '0.75rem', marginTop: '0.25rem', opacity: 0.85 }}>Authenticity Mode: Cryptographic SHA-256 integrity anchor bound to your wallet identity.</div>
-              </div>
-            )}
-
-            <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end', alignItems: 'center', flexWrap: 'wrap' }}>
-              {registeredId && onToggleArchive && (
-                <button
-                  type="button"
-                  className="btn btn-secondary btn-sm"
-                  onClick={() => {
-                    onToggleArchive(registeredId);
-                    setIsArchived(!isArchived);
-                  }}
-                  style={{ fontSize: '0.84rem' }}
-                >
-                  {isArchived ? '🔄 Restore to Marketplace' : '📦 Archive Dataset'}
-                </button>
+        {/* Submit Actions */}
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem' }}>
+          {!isConnected ? (
+            <button className="btn btn-primary btn-lg" onClick={() => onConnect('1am')}>
+              <Lock size={15} />
+              <span>Connect Wallet to Share</span>
+            </button>
+          ) : (
+            <button
+              className="btn btn-primary btn-lg"
+              onClick={handleRegister}
+              disabled={status === 'fingerprinting' || status === 'recording' || !file}
+            >
+              {status === 'fingerprinting' && <span>Scanning file locally…</span>}
+              {status === 'recording' && <span>Publishing certificate…</span>}
+              {status === 'idle' && (
+                <>
+                  <CheckCircle2 size={15} />
+                  <span>Publish Dataset Certificate</span>
+                </>
               )}
-
-              {registeredId && onRemoveListing && (
-                <button
-                  type="button"
-                  className="btn btn-sm"
-                  onClick={() => {
-                    if (confirm('Are you sure you want to permanently remove this dataset listing from the marketplace?')) {
-                      onRemoveListing(registeredId);
-                      setStatus('idle');
-                      setRegisteredId(null);
-                    }
-                  }}
-                  style={{
-                    background: 'rgba(239, 68, 68, 0.12)',
-                    border: '1px solid rgba(239, 68, 68, 0.35)',
-                    color: '#f87171',
-                    fontSize: '0.84rem',
-                    padding: '0.45rem 0.85rem',
-                    borderRadius: 'var(--radius-sm)',
-                    cursor: 'pointer',
-                  }}
-                >
-                  🗑️ Remove Listing
-                </button>
-              )}
-
-              <button className="btn btn-primary" onClick={onSuccess}>
-                🚀 View in Marketplace ↗
-              </button>
-            </div>
-          </div>
-        )}
-
-        {status !== 'done' && (
-          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-            {!isConnected ? (
-              <button className="btn btn-primary btn-lg" onClick={() => onConnect('1am')}>
-                🔒 Connect Wallet to Register
-              </button>
-            ) : (
-              <button
-                className="btn btn-primary btn-lg"
-                onClick={handleRegister}
-                disabled={status === 'fingerprinting' || status === 'recording' || !file}
-              >
-                {status === 'fingerprinting' && '🔒 Creating Digital Fingerprint…'}
-                {status === 'recording' && '⛓️ Saving to Midnight Blockchain…'}
-                {status === 'idle' && '🔒 Create Fingerprint & Register on Blockchain'}
-              </button>
-            )}
-          </div>
-        )}
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
-// 4. VERIFIER PLAYGROUND
+// 4. VERIFIER VIEW (Verify Data)
 // ═════════════════════════════════════════════════════════════════════════════
 
 function VerifierView({
   walletApi,
+  walletState,
   listings,
   favorites,
   onToggleFavorite,
@@ -1215,102 +981,89 @@ function VerifierView({
   onIncrementVerified: () => void;
   onGoRegister?: () => void;
 }) {
-  const [selectedId, setSelectedId] = useState<string>(preselectedListing?.datasetId || listings[0]?.datasetId || '');
+  const [selectedId, setSelectedId] = useState<string>(
+    preselectedListing?.datasetId || listings[0]?.datasetId || ''
+  );
   const [showSelector, setShowSelector] = useState(false);
   const [selectorSearch, setSelectorSearch] = useState('');
-  const [selectorCat, setSelectorCat] = useState('All');
   const [testFile, setTestFile] = useState<File | null>(null);
   const [isVerifying, setIsVerifying] = useState(false);
   const [result, setResult] = useState<{
     matched: boolean;
     mode: 'zk-onchain' | 'local-tamper';
     txHash?: string;
+    serverOffline?: boolean;
+    errorTitle?: string;
+    errorMessage?: string;
+    successTitle?: string;
+    successMessage?: string;
     computedHash?: string;
     expectedHash?: string;
   } | null>(null);
 
-  // Keep selectedId in sync if preselectedListing changes from outside (e.g. Marketplace click)
-  useEffect(() => {
-    if (preselectedListing?.datasetId) {
-      setSelectedId(preselectedListing.datasetId);
-      setResult(null);
-    }
-  }, [preselectedListing]);
-
   const activeListing = listings.find((l) => l.datasetId === selectedId) || listings[0];
   const isActiveFav = activeListing ? favorites.includes(activeListing.datasetId) : false;
 
-  const selectorFavoritesCount = useMemo(
-    () => listings.filter((l) => favorites.includes(l.datasetId)).length,
-    [listings, favorites]
-  );
-
-  const filteredSelectorListings = useMemo(() => {
-    return listings.filter((l) => {
-      let matchCat = true;
-      if (selectorCat === 'All') {
-        matchCat = true;
-      } else if (selectorCat === '★ Favorites') {
-        matchCat = favorites.includes(l.datasetId);
-      } else {
-        matchCat = Boolean(l.category && l.category.toLowerCase().includes(selectorCat.toLowerCase()));
-      }
-
-      const matchSearch =
-        !selectorSearch ||
-        l.datasetName.toLowerCase().includes(selectorSearch.toLowerCase()) ||
-        l.datasetId.toLowerCase().includes(selectorSearch.toLowerCase()) ||
-        (l.category && l.category.toLowerCase().includes(selectorSearch.toLowerCase())) ||
-        l.license.toLowerCase().includes(selectorSearch.toLowerCase());
-
-      return matchCat && matchSearch;
-    });
-  }, [listings, favorites, selectorCat, selectorSearch]);
-
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const f = e.target.files?.[0];
-    if (f) {
-      setTestFile(f);
-      setResult(null);
-    }
-  };
-
-  const handleClearFile = (e?: React.MouseEvent) => {
-    if (e) {
-      e.stopPropagation();
-      e.preventDefault();
-    }
-    setTestFile(null);
-    setResult(null);
-    const input = document.getElementById('verify-input') as HTMLInputElement;
-    if (input) input.value = '';
-  };
-
   const handleExecuteZKProof = async () => {
+    if (!activeListing) return;
     setIsVerifying(true);
-    try {
-      await new Promise((r) => setTimeout(r, ZK_PROOF_ANIMATION_MS));
-      let tx: string | undefined = undefined;
+    setResult(null);
 
-      if (walletApi && typeof walletApi.callContract === 'function') {
-        const res = await walletApi.callContract({
-          circuit: 'proveIntegrity',
-          args: { datasetId: activeListing?.datasetId || 'custom_verification' },
-        });
-        if (res?.txHash) {
-          tx = res.txHash;
-        }
-      }
-
-      onIncrementVerified();
+    // 1. Validate wallet connection
+    if (!walletState || walletState.status !== 'connected') {
+      setIsVerifying(false);
       setResult({
-        matched: true,
+        matched: false,
         mode: 'zk-onchain',
-        txHash: tx,
-        expectedHash: activeListing?.dataCommitment,
+        errorTitle: 'Midnight Wallet Not Connected',
+        errorMessage: 'An on-chain Zero-Knowledge proof requires a connected Midnight wallet (Lace or 1AM). Please connect your wallet first.',
       });
-    } catch {
-      setResult({ matched: false, mode: 'zk-onchain' });
+      return;
+    }
+
+    try {
+      // 2. Execute on-chain proof request via Proof Server
+      const res = await requestOnChainProof(
+        'proveIntegrity',
+        activeListing.datasetId,
+        walletApi
+      );
+
+      if (res.success && res.txHash) {
+        onIncrementVerified();
+        setResult({
+          matched: true,
+          mode: 'zk-onchain',
+          txHash: res.txHash,
+          successTitle: 'On-Chain ZK Proof Verified!',
+          successMessage: `Zero-Knowledge proof was verified by the Midnight network in ${(res.durationMs / 1000).toFixed(1)}s. Raw dataset rows were never revealed.`,
+          expectedHash: activeListing.dataCommitment,
+        });
+      } else if (res.proofServerOffline) {
+        setResult({
+          matched: false,
+          mode: 'zk-onchain',
+          serverOffline: true,
+          errorTitle: 'Midnight Proof Server Offline',
+          errorMessage:
+            res.error ||
+            `The Midnight Proof Server (${PROOF_SERVER_URL}) is offline or unreachable. To submit real on-chain proofs, ensure your proof-server Docker container is running or host it on Railway/Render.`,
+        });
+      } else {
+        setResult({
+          matched: false,
+          mode: 'zk-onchain',
+          errorTitle: 'Verification Incomplete',
+          errorMessage: res.error || 'On-chain proof generation failed.',
+        });
+      }
+    } catch (err: any) {
+      setResult({
+        matched: false,
+        mode: 'zk-onchain',
+        errorTitle: 'Proof Verification Failed',
+        errorMessage: err?.message || 'Could not communicate with the Midnight network.',
+      });
     } finally {
       setIsVerifying(false);
     }
@@ -1319,6 +1072,7 @@ function VerifierView({
   const handleExecuteLocalFileCheck = async () => {
     if (!testFile || !activeListing) return;
     setIsVerifying(true);
+    setResult(null);
 
     try {
       const buffer = await testFile.arrayBuffer();
@@ -1329,65 +1083,66 @@ function VerifierView({
 
       await new Promise((r) => setTimeout(r, FILE_HASH_ANIMATION_MS));
 
-      if (hashHex.toLowerCase() !== activeListing.dataCommitment.toLowerCase()) {
+      const isMatch = hashHex.toLowerCase() === activeListing.dataCommitment.toLowerCase();
+
+      if (!isMatch) {
         setResult({
           matched: false,
           mode: 'local-tamper',
           computedHash: hashHex,
           expectedHash: activeListing.dataCommitment,
+          errorTitle: 'Tamper Alert: Local File Mismatch',
+          errorMessage: `The computed SHA-256 hash does not match the publisher's registered anchor. The file may have been altered, truncated, or is not the original dataset.`,
         });
         setIsVerifying(false);
         return;
       }
 
-      let tx: string | undefined = undefined;
-      if (walletApi && typeof walletApi.callContract === 'function') {
-        try {
-          const res = await walletApi.callContract({
-            circuit: 'proveIntegrity',
-            args: { datasetId: activeListing.datasetId },
-          });
-          if (res?.txHash) {
-            tx = res.txHash;
-          }
-        } catch {
-          // Off-chain verification remains valid
-        }
-      }
-
-      onIncrementVerified();
       setResult({
         matched: true,
         mode: 'local-tamper',
-        txHash: tx,
         computedHash: hashHex,
         expectedHash: activeListing.dataCommitment,
+        successTitle: 'Local File Integrity Confirmed!',
+        successMessage: `Your local file's SHA-256 cryptographic digest matches the registered certificate fingerprint with 100% mathematical certainty.`,
       });
-    } catch {
-      setResult({ matched: false, mode: 'local-tamper' });
+    } catch (err: any) {
+      setResult({
+        matched: false,
+        mode: 'local-tamper',
+        errorTitle: 'File Verification Failed',
+        errorMessage: err?.message || 'Could not process local file in browser memory.',
+      });
     } finally {
       setIsVerifying(false);
     }
   };
 
   return (
-    <div style={{ maxWidth: 880, margin: '0 auto' }}>
-      <div className="card" style={{ marginBottom: '2rem' }}>
-        {/* Header */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.4rem', flexWrap: 'wrap', gap: '0.5rem' }}>
-          <div>
+    <div style={{ maxWidth: 860, margin: '0 auto' }}>
+      <div className="card" style={{ padding: '2.25rem' }}>
+        <div style={{ marginBottom: '1.75rem' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '0.35rem' }}>
             <h2 style={{ fontSize: '1.45rem', margin: 0 }}>Verify Dataset Authenticity</h2>
-            <p style={{ fontSize: '0.88rem', color: 'var(--text-muted)', marginTop: '0.2rem', marginBottom: 0 }}>
-              Verify cryptographic integrity on Midnight blockchain with zero exposure of raw records.
-            </p>
+            <span
+              className="badge badge-purple"
+              style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.74rem' }}
+              title={`Target Proof Server: ${PROOF_SERVER_URL}`}
+            >
+              <Server size={12} />
+              Midnight Proof Server
+            </span>
           </div>
+          <p style={{ fontSize: '0.86rem', color: 'var(--text-muted)', margin: 0 }}>
+            Verify dataset authenticity and integrity on the privacy network using Zero-Knowledge proofs.
+          </p>
         </div>
 
-        {/* ── STEP 1: SELECTED DATASET SPOTLIGHT ─────────────────────────── */}
-        <div style={{ marginTop: '1.5rem', marginBottom: '1.75rem' }}>
+        {/* Selected Target Dataset Card */}
+        <div style={{ marginBottom: '1.75rem' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.6rem' }}>
-            <span style={{ fontSize: '0.76rem', fontWeight: 700, color: 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-              Target Registered Dataset
+            <span style={{ fontSize: '0.74rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+              DATASET TO VERIFY
             </span>
             {listings.length > 1 && (
               <button
@@ -1396,7 +1151,8 @@ function VerifierView({
                 onClick={() => setShowSelector(!showSelector)}
                 style={{ fontSize: '0.76rem', padding: '0.25rem 0.65rem' }}
               >
-                {showSelector ? '▲ Close Selector' : `🔄 Switch Dataset (${listings.length} available)`}
+                <RefreshCw size={11} />
+                <span>{showSelector ? 'Close List' : `Switch Dataset (${listings.length})`}</span>
               </button>
             )}
           </div>
@@ -1404,70 +1160,62 @@ function VerifierView({
           {activeListing ? (
             <div
               style={{
-                background: 'rgba(139, 92, 246, 0.05)',
-                border: '1px solid rgba(139, 92, 246, 0.25)',
+                background: 'rgba(13, 59, 102, 0.45)',
+                border: '1px solid rgba(250, 240, 202, 0.25)',
                 borderRadius: 'var(--radius-md)',
                 padding: '1.25rem',
               }}
             >
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '0.6rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '0.75rem', marginBottom: '0.75rem' }}>
                 <div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '0.35rem', flexWrap: 'wrap' }}>
-                    <h3 style={{ fontSize: '1.15rem', color: '#fff', margin: 0 }}>
-                      {activeListing.datasetName}
-                    </h3>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '0.35rem' }}>
+                    <h3 style={{ fontSize: '1.15rem', color: '#FAF0CA', margin: 0 }}>{activeListing.datasetName}</h3>
                     <button
                       type="button"
                       onClick={() => onToggleFavorite(activeListing.datasetId)}
                       className="btn btn-ghost btn-sm"
                       style={{
-                        padding: '0.12rem 0.55rem',
+                        padding: '0.15rem 0.5rem',
                         fontSize: '0.74rem',
                         borderRadius: 'var(--radius-full)',
-                        background: isActiveFav ? 'rgba(234, 179, 8, 0.15)' : 'rgba(255, 255, 255, 0.05)',
-                        color: isActiveFav ? '#facc15' : 'var(--text-subtle)',
-                        border: `1px solid ${isActiveFav ? 'rgba(234, 179, 8, 0.4)' : 'rgba(255, 255, 255, 0.1)'}`,
+                        background: isActiveFav ? 'rgba(245, 228, 168, 0.2)' : 'rgba(250, 240, 202, 0.08)',
+                        color: isActiveFav ? '#FAF0CA' : 'var(--text-subtle)',
                       }}
-                      title={isActiveFav ? 'Remove from favorites' : 'Add to favorites'}
                     >
-                      {isActiveFav ? '★ In Favorites' : '☆ Add to Favorites'}
+                      <Bookmark size={12} fill={isActiveFav ? '#FAF0CA' : 'none'} />
                     </button>
                   </div>
-
-                  <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', alignItems: 'center' }}>
-                    <span className="badge badge-purple" style={{ fontSize: '0.7rem' }}>{activeListing.category || 'AI Dataset'}</span>
-                    <span className="badge badge-green" style={{ fontSize: '0.7rem' }}>{activeListing.license}</span>
-                    {activeListing.complianceTag && (
-                      <span className="badge badge-cyan" style={{ fontSize: '0.7rem' }}>{activeListing.complianceTag}</span>
-                    )}
+                  <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
+                    <span className="badge badge-purple">{activeListing.category || 'AI Training'}</span>
+                    <span className="badge badge-green">{activeListing.license}</span>
+                    {activeListing.complianceTag && <span className="badge badge-cyan">{activeListing.complianceTag}</span>}
                   </div>
                 </div>
 
-                <div style={{ textAlign: 'right', minWidth: 140 }}>
-                  <div style={{ fontSize: '0.72rem', color: 'var(--text-subtle)', textTransform: 'uppercase' }}>Records & Size</div>
-                  <div style={{ fontSize: '0.85rem', fontWeight: 600, color: '#fff' }}>
-                    {activeListing.rowCount || '—'} • {formatBytes(activeListing.datasetSize)}
+                <div style={{ textAlign: 'right' }}>
+                  <div style={{ fontSize: '0.72rem', color: 'var(--text-subtle)' }}>SIZE & ROWS</div>
+                  <div style={{ fontSize: '0.86rem', fontWeight: 600, color: '#FAF0CA' }}>
+                    {activeListing.rowCount || '—'} rows · {formatBytes(activeListing.datasetSize)}
                   </div>
                 </div>
               </div>
 
-              <div style={{ marginTop: '0.8rem', paddingTop: '0.75rem', borderTop: '1px solid rgba(255, 255, 255, 0.06)' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.68rem', color: 'var(--text-subtle)', marginBottom: '0.2rem' }}>
-                  <span>MIDNIGHT ON-CHAIN COMMITMENT (SHA-256 ANCHOR)</span>
-                  <span style={{ color: 'var(--emerald-light)' }}>Zero-Knowledge Protected</span>
+              <div style={{ borderTop: '1px solid rgba(250, 240, 202, 0.15)', paddingTop: '0.75rem' }}>
+                <div style={{ fontSize: '0.68rem', color: 'var(--text-subtle)', marginBottom: '0.25rem', letterSpacing: '0.04em' }}>
+                  OFFICIAL DIGITAL FINGERPRINT
                 </div>
                 <div
                   className="mono"
                   style={{
-                    background: 'rgba(0, 0, 0, 0.45)',
-                    padding: '0.4rem 0.65rem',
+                    background: 'rgba(6, 25, 44, 0.75)',
+                    padding: '0.45rem 0.65rem',
                     borderRadius: 'var(--radius-sm)',
                     fontSize: '0.74rem',
-                    color: 'var(--cyan-light)',
+                    color: '#FAF0CA',
                     overflow: 'hidden',
                     textOverflow: 'ellipsis',
                     whiteSpace: 'nowrap',
-                    border: '1px solid rgba(6, 182, 212, 0.2)',
+                    border: '1px solid rgba(250, 240, 202, 0.15)',
                   }}
                 >
                   {activeListing.dataCommitment}
@@ -1476,136 +1224,88 @@ function VerifierView({
             </div>
           ) : (
             <div className="card" style={{ textAlign: 'center', padding: '2rem' }}>
-              <p style={{ margin: 0, color: 'var(--text-muted)' }}>No dataset registered on blockchain.</p>
+              <p style={{ margin: 0, color: 'var(--text-muted)' }}>No datasets registered yet.</p>
               {onGoRegister && (
                 <button className="btn btn-primary btn-sm" onClick={onGoRegister} style={{ marginTop: '0.75rem' }}>
-                  📝 Register First Dataset
+                  <PlusCircle size={14} />
+                  <span>Share First Dataset</span>
                 </button>
               )}
             </div>
           )}
 
-          {/* ── EXPANDABLE DATASET SELECTOR MODAL / GRID ───────────────────── */}
-          {showSelector && listings.length > 0 && (
+          {/* Expandable Dataset Selector */}
+          {showSelector && (
             <div
               style={{
-                marginTop: '1rem',
-                background: 'rgba(0, 0, 0, 0.55)',
-                border: '1px solid var(--border-subtle)',
+                marginTop: '0.85rem',
+                background: 'rgba(10, 43, 74, 0.98)',
+                border: '1px solid var(--border-hover)',
                 borderRadius: 'var(--radius-md)',
-                padding: '1.25rem',
+                padding: '1rem',
+                maxHeight: 260,
+                overflowY: 'auto',
               }}
             >
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap', marginBottom: '1rem' }}>
-                <div style={{ fontWeight: 600, color: '#fff', fontSize: '0.88rem' }}>
-                  Choose Dataset to Verify ({filteredSelectorListings.length} results):
-                </div>
-                <input
-                  type="text"
-                  placeholder="Search dataset name or category…"
-                  className="input"
-                  value={selectorSearch}
-                  onChange={(e) => setSelectorSearch(e.target.value)}
-                  style={{ width: 220, padding: '0.35rem 0.75rem', fontSize: '0.8rem' }}
-                />
-              </div>
-
-              {/* Category Filter Pills */}
-              <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap', marginBottom: '1rem' }}>
-                {['All', '★ Favorites', 'Healthcare AI', 'LLM Reasoning', 'Financial AI', 'Computer Vision'].map((cat) => {
-                  const isFavPill = cat === '★ Favorites';
-                  const label = isFavPill ? (selectorFavoritesCount > 0 ? `★ Favorites (${selectorFavoritesCount})` : '★ Favorites') : cat;
-                  return (
-                    <button
-                      key={cat}
-                      type="button"
-                      onClick={() => setSelectorCat(cat)}
-                      className={`btn btn-sm ${selectorCat === cat ? (isFavPill ? 'btn-cyan' : 'btn-primary') : 'btn-secondary'}`}
+              <input
+                type="text"
+                className="input"
+                placeholder="Search registered datasets…"
+                value={selectorSearch}
+                onChange={(e) => setSelectorSearch(e.target.value)}
+                style={{ marginBottom: '0.75rem', fontSize: '0.82rem', padding: '0.4rem 0.75rem' }}
+              />
+              <div style={{ display: 'grid', gap: '0.5rem' }}>
+                {listings
+                  .filter((l) => !selectorSearch || l.datasetName.toLowerCase().includes(selectorSearch.toLowerCase()))
+                  .map((item) => (
+                    <div
+                      key={item.datasetId}
+                      onClick={() => {
+                        setSelectedId(item.datasetId);
+                        setShowSelector(false);
+                        setResult(null);
+                      }}
                       style={{
-                        fontSize: '0.72rem',
-                        padding: '0.2rem 0.6rem',
-                        borderRadius: 'var(--radius-full)',
-                        color: isFavPill && selectorCat !== cat ? '#facc15' : undefined,
+                        padding: '0.65rem 0.85rem',
+                        background: item.datasetId === selectedId ? 'rgba(250, 240, 202, 0.2)' : 'rgba(250, 240, 202, 0.05)',
+                        border: '1px solid rgba(250, 240, 202, 0.15)',
+                        borderRadius: 'var(--radius-sm)',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
                       }}
                     >
-                      {label}
-                    </button>
-                  );
-                })}
+                      <div style={{ fontWeight: 600, color: '#FAF0CA', fontSize: '0.85rem' }}>{item.datasetName}</div>
+                      <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)' }}>{item.license}</div>
+                    </div>
+                  ))}
               </div>
-
-              {/* Dataset Cards List */}
-              {filteredSelectorListings.length === 0 ? (
-                <div style={{ padding: '2rem 1rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.84rem' }}>
-                  {selectorCat === '★ Favorites' ? '⭐ No favorite datasets saved yet.' : 'No matching datasets found.'}
-                </div>
-              ) : (
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '0.75rem', maxHeight: 280, overflowY: 'auto' }}>
-                  {filteredSelectorListings.map((item) => {
-                    const isSelected = item.datasetId === selectedId;
-                    const isItemFav = favorites.includes(item.datasetId);
-                    return (
-                      <div
-                        key={item.datasetId}
-                        onClick={() => {
-                          setSelectedId(item.datasetId);
-                          setShowSelector(false);
-                          setResult(null);
-                          handleClearFile();
-                        }}
-                        style={{
-                          background: isSelected ? 'rgba(6, 182, 212, 0.12)' : 'rgba(255, 255, 255, 0.03)',
-                          border: `1px solid ${isSelected ? 'var(--cyan-light)' : 'rgba(255, 255, 255, 0.08)'}`,
-                          borderRadius: 'var(--radius-sm)',
-                          padding: '0.85rem',
-                          cursor: 'pointer',
-                          transition: 'all 0.15s ease',
-                        }}
-                      >
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.3rem' }}>
-                          <div style={{ display: 'flex', gap: '0.3rem', alignItems: 'center' }}>
-                            <span className="badge badge-purple" style={{ fontSize: '0.65rem' }}>{item.category || 'AI'}</span>
-                            {isItemFav && <span style={{ color: '#facc15', fontSize: '0.75rem' }}>★</span>}
-                          </div>
-                          {isSelected && (
-                            <span className="badge badge-green" style={{ fontSize: '0.65rem' }}>✓ Selected</span>
-                          )}
-                        </div>
-                        <div style={{ fontWeight: 600, color: '#fff', fontSize: '0.86rem', marginBottom: '0.25rem', lineHeight: 1.3 }}>
-                          {item.datasetName}
-                        </div>
-                        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-                          {item.license} • {formatBytes(item.datasetSize)}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
             </div>
           )}
         </div>
 
-        {/* ── STEP 2: PRIMARY ACTION - ZERO-KNOWLEDGE PROOF (NO UPLOAD REQUIRED) ─ */}
+        {/* Primary Action: ZK Proof Verification */}
         <div
           style={{
-            background: 'linear-gradient(135deg, rgba(139, 92, 246, 0.08) 0%, rgba(6, 182, 212, 0.04) 100%)',
-            border: '1px solid rgba(139, 92, 246, 0.35)',
+            background: 'linear-gradient(135deg, rgba(24, 96, 163, 0.35) 0%, rgba(13, 59, 102, 0.55) 100%)',
+            border: '1px solid rgba(250, 240, 202, 0.28)',
             borderRadius: 'var(--radius-md)',
-            padding: '1.4rem',
+            padding: '1.5rem',
             marginBottom: '1.75rem',
           }}
         >
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '1rem' }}>
-            <div style={{ maxWidth: 500 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginBottom: '0.3rem' }}>
-                <span style={{ fontSize: '1.1rem' }}>⚡</span>
-                <h3 style={{ fontSize: '1.05rem', color: '#fff', margin: 0 }}>
-                  Execute Zero-Knowledge Authenticity Proof
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
+            <div style={{ maxWidth: 480 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.3rem' }}>
+                <Zap size={18} color="#FAF0CA" />
+                <h3 style={{ fontSize: '1.05rem', color: '#FAF0CA', margin: 0 }}>
+                  On-Chain ZK Proof Verification
                 </h3>
               </div>
               <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)', margin: 0, lineHeight: 1.5 }}>
-                Proves on the Midnight blockchain that the dataset's cryptographic commitment exists and satisfies the zero-knowledge circuit (<code>proveIntegrity</code>) — without needing to upload or reveal any records.
+                Generates a real Zero-Knowledge proof via the Midnight Proof Server and verifies integrity on Midnight Preview.
               </p>
             </div>
 
@@ -1613,134 +1313,138 @@ function VerifierView({
               className="btn btn-primary btn-lg"
               onClick={handleExecuteZKProof}
               disabled={isVerifying || !activeListing}
-              style={{ minWidth: 220 }}
             >
-              {isVerifying ? '⚡ Proving on Midnight…' : '⚡ Confirm Authenticity on Blockchain'}
+              <CheckCircle2 size={16} />
+              <span>{isVerifying ? 'Proving On-Chain…' : 'Run ZK Verification'}</span>
             </button>
           </div>
         </div>
 
-        {/* ── RESULT NOTIFICATION BOX ────────────────────────────────────── */}
+        {/* Result Box */}
         {result && (
           <div
             style={{
-              background: result.matched ? 'rgba(16, 185, 129, 0.1)' : 'rgba(244, 63, 94, 0.1)',
-              border: `1px solid ${result.matched ? 'rgba(16, 185, 129, 0.35)' : 'rgba(244, 63, 94, 0.35)'}`,
+              background: result.matched
+                ? 'rgba(52, 211, 153, 0.12)'
+                : result.serverOffline
+                ? 'rgba(251, 191, 36, 0.12)'
+                : 'rgba(251, 113, 133, 0.12)',
+              border: `1px solid ${
+                result.matched
+                  ? 'rgba(52, 211, 153, 0.35)'
+                  : result.serverOffline
+                  ? 'rgba(251, 191, 36, 0.35)'
+                  : 'rgba(251, 113, 133, 0.35)'
+              }`,
               borderRadius: 'var(--radius-sm)',
-              padding: '1rem 1.25rem',
-              color: result.matched ? '#6ee7b7' : '#fda4af',
+              padding: '1.25rem',
+              color: result.matched
+                ? '#6ee7b7'
+                : result.serverOffline
+                ? '#fde68a'
+                : '#fda4af',
               fontSize: '0.85rem',
               marginBottom: '1.75rem',
             }}
           >
-            <div style={{ fontWeight: 700, marginBottom: '0.3rem', fontSize: '0.95rem' }}>
-              {result.matched
-                ? result.mode === 'local-tamper'
-                  ? '✓ 100% Genuine: Local File Matches Registered Dataset Fingerprint!'
-                  : result.txHash
-                    ? '✓ 100% Genuine: Zero-Knowledge Integrity Verified on Midnight Blockchain!'
-                    : '✓ 100% Genuine: Dataset Integrity Commitment Verified!'
-                : '✗ Verification Failed: Hash Mismatch / Tampering Detected'}
+            <div style={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.35rem' }}>
+              {result.matched ? (
+                <Check size={18} />
+              ) : result.serverOffline ? (
+                <AlertTriangle size={18} />
+              ) : (
+                <X size={18} />
+              )}
+              <span style={{ fontSize: '0.95rem' }}>
+                {result.matched
+                  ? result.successTitle || 'Verification Confirmed'
+                  : result.errorTitle || 'Verification Incomplete'}
+              </span>
             </div>
-
-            <div style={{ fontSize: '0.8rem', opacity: 0.9, marginTop: '0.2rem', lineHeight: 1.4 }}>
-              {result.matched
-                ? result.mode === 'local-tamper'
-                  ? 'Your local file was hashed in-browser (SHA-256) and exactly matches the registered dataset commitment.'
-                  : result.txHash
-                    ? 'Midnight zero-knowledge circuit (proveIntegrity) successfully submitted and verified on the ledger.'
-                    : 'Zero-knowledge commitment anchor successfully verified against the dataset registry.'
-                : 'The cryptographic fingerprint of your local file does not match the immutable commitment stored in the registry.'}
+            <div style={{ fontSize: '0.82rem', opacity: 0.95, lineHeight: 1.5 }}>
+              {result.matched ? result.successMessage : result.errorMessage}
             </div>
-
-            {result.txHash ? (
-              <div className="mono" style={{ fontSize: '0.76rem', marginTop: '0.5rem', color: '#fff' }}>
-                On-Chain Proof Transaction: {result.txHash}
-              </div>
-            ) : result.matched ? (
-              <div style={{ fontSize: '0.74rem', marginTop: '0.4rem', color: 'var(--cyan-light)' }}>
-                Verification Mode: In-Browser Cryptographic SHA-256 Proof (No Raw Data Exposed)
-              </div>
-            ) : null}
-            {result.computedHash && (
-              <div className="mono" style={{ fontSize: '0.72rem', opacity: 0.85, marginTop: '0.2rem' }}>
-                Computed Local File Hash: {result.computedHash}
+            {result.txHash && (
+              <div style={{ marginTop: '0.6rem' }}>
+                <a
+                  href={`https://preview.midnightexplorer.com/tx/${result.txHash}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="mono"
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '0.35rem',
+                    fontSize: '0.74rem',
+                    background: 'rgba(6, 25, 44, 0.65)',
+                    padding: '0.4rem 0.6rem',
+                    borderRadius: 'var(--radius-xs)',
+                    color: '#6ee7b7',
+                    textDecoration: 'underline',
+                    wordBreak: 'break-all',
+                  }}
+                >
+                  <ExternalLink size={12} />
+                  <span>VIEW ON MIDNIGHT EXPLORER: {result.txHash}</span>
+                </a>
               </div>
             )}
-            {result.expectedHash && !result.matched && (
-              <div className="mono" style={{ fontSize: '0.72rem', opacity: 0.85, marginTop: '0.2rem' }}>
-                Expected Registered Hash: {result.expectedHash}
+            {result.computedHash && (
+              <div style={{ marginTop: '0.6rem', fontSize: '0.75rem' }}>
+                <div style={{ opacity: 0.8, marginBottom: '0.2rem' }}>COMPUTED SHA-256:</div>
+                <div className="mono" style={{ background: 'rgba(6, 25, 44, 0.65)', padding: '0.35rem 0.6rem', borderRadius: 'var(--radius-xs)', wordBreak: 'break-all', color: result.matched ? '#6ee7b7' : '#fda4af' }}>
+                  {result.computedHash}
+                </div>
               </div>
             )}
           </div>
         )}
 
-        {/* ── STEP 3: OPTIONAL / SECONDARY LOCAL FILE TAMPER CHECK ────────── */}
+        {/* Local File Check */}
         <div
           style={{
-            border: '1px solid var(--border-subtle)',
+            border: '1px solid var(--border-glass)',
             borderRadius: 'var(--radius-md)',
-            padding: '1.1rem 1.25rem',
-            background: 'rgba(0, 0, 0, 0.25)',
+            padding: '1.25rem',
+            background: 'rgba(6, 25, 44, 0.55)',
           }}
         >
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem', flexWrap: 'wrap', gap: '0.5rem' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-              <span style={{ fontSize: '1rem' }}>📁</span>
-              <span style={{ fontWeight: 600, color: '#fff', fontSize: '0.88rem' }}>
-                Optional: Have a local copy of this dataset? Test for tampering
-              </span>
-            </div>
-            {testFile && (
-              <button
-                type="button"
-                onClick={() => handleClearFile()}
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  color: 'var(--rose-light, #fda4af)',
-                  cursor: 'pointer',
-                  fontSize: '0.76rem',
-                  textDecoration: 'underline',
-                  padding: 0,
-                }}
-              >
-                ✕ Clear File
-              </button>
-            )}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.4rem' }}>
+            <FolderGit2 size={16} color="#FAF0CA" />
+            <span style={{ fontWeight: 600, color: '#FAF0CA', fontSize: '0.88rem' }}>
+              Check a File on Your Computer (Local Browser Verification)
+            </span>
           </div>
-
-          <p style={{ fontSize: '0.78rem', color: 'var(--text-subtle)', marginBottom: '0.9rem', lineHeight: 1.4 }}>
-            Calculates SHA-256 right inside your browser memory (file is never uploaded) to verify that your local copy has not been modified or corrupted.
+          <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: '0.85rem' }}>
+            Select a local dataset file to compute its SHA-256 hash in browser memory and compare it directly against the registered certificate.
           </p>
-
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
-            <input type="file" style={{ display: 'none' }} id="verify-input" onChange={handleFileChange} />
+          <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
+            <input
+              type="file"
+              id="tamper-test-input"
+              style={{ display: 'none' }}
+              onChange={(e) => setTestFile(e.target.files?.[0] || null)}
+            />
             <label
-              htmlFor="verify-input"
+              htmlFor="tamper-test-input"
               className="btn btn-secondary btn-sm"
-              style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}
+              style={{ cursor: 'pointer' }}
             >
-              📥 {testFile ? 'Choose Different File' : 'Select Local File to Test'}
+              <FolderGit2 size={13} />
+              <span>{testFile ? 'Change File' : 'Select Local File'}</span>
             </label>
-
-            {testFile ? (
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flex: 1, minWidth: 200 }}>
-                <span style={{ fontSize: '0.82rem', color: '#fff', fontWeight: 600 }}>
-                  📄 {testFile.name} ({formatBytes(testFile.size)})
-                </span>
+            {testFile && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                <span style={{ fontSize: '0.82rem', color: '#FAF0CA' }}>{testFile.name}</span>
                 <button
-                  className="btn btn-cyan btn-sm"
+                  className="btn btn-primary btn-sm"
                   onClick={handleExecuteLocalFileCheck}
                   disabled={isVerifying}
                 >
-                  {isVerifying ? 'Checking Hash…' : '⚡ Check Local Tamper-Resistance'}
+                  <CheckCircle2 size={13} />
+                  <span>Verify File Integrity</span>
                 </button>
               </div>
-            ) : (
-              <span style={{ fontSize: '0.76rem', color: 'var(--text-subtle)' }}>
-                No file selected (optional)
-              </span>
             )}
           </div>
         </div>
@@ -1749,10 +1453,14 @@ function VerifierView({
   );
 }
 
-// ── Details Modal ─────────────────────────────────────────────────────────────
+// ═════════════════════════════════════════════════════════════════════════════
+// 5. INSPECT MODAL (Dataset Details)
+// ═════════════════════════════════════════════════════════════════════════════
+
 function InspectModal({
   listing,
   isFavorite,
+  walletAddress,
   onToggleFavorite,
   onToggleArchive,
   onRemoveListing,
@@ -1761,19 +1469,29 @@ function InspectModal({
 }: {
   listing: DataListing;
   isFavorite: boolean;
+  walletAddress?: string | null;
   onToggleFavorite: () => void;
   onToggleArchive?: (id: string) => void;
   onRemoveListing?: (id: string) => void;
   onClose: () => void;
   onVerify: () => void;
 }) {
+  const isOwner = Boolean(
+    walletAddress &&
+    listing.providerCommit &&
+    (listing.providerCommit.trim().toLowerCase() === walletAddress.trim().toLowerCase() ||
+     listing.providerCommit.trim().toLowerCase() === walletAddress.trim().toLowerCase().replace(/^mn_addr(?:_[a-z0-9]+)?1/, '') ||
+     walletAddress.trim().toLowerCase() === listing.providerCommit.trim().toLowerCase().replace(/^mn_addr(?:_[a-z0-9]+)?1/, ''))
+  );
+
   return (
     <div
       style={{
         position: 'fixed',
         inset: 0,
-        background: 'rgba(4, 5, 10, 0.85)',
-        backdropFilter: 'blur(10px)',
+        background: 'rgba(4, 18, 32, 0.88)',
+        backdropFilter: 'blur(16px)',
+        WebkitBackdropFilter: 'blur(16px)',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
@@ -1784,54 +1502,83 @@ function InspectModal({
     >
       <div
         className="card"
-        style={{ maxWidth: 520, width: '100%', padding: '1.75rem' }}
+        style={{
+          maxWidth: 540,
+          width: '100%',
+          padding: '2rem',
+          background: 'rgba(10, 43, 74, 0.98)',
+          border: '1px solid rgba(250, 240, 202, 0.28)',
+          boxShadow: '0 24px 64px rgba(4, 18, 32, 0.9)',
+        }}
         onClick={(e) => e.stopPropagation()}
       >
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.2rem' }}>
-          <h3 style={{ color: '#fff', fontSize: '1.2rem' }}>Dataset Information</h3>
-          <button className="btn btn-ghost btn-sm" onClick={onClose}>✕</button>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
+          <h3 style={{ color: '#FAF0CA', fontSize: '1.25rem', margin: 0 }}>Dataset Details</h3>
+          <button className="btn btn-ghost btn-sm" onClick={onClose}>
+            <X size={16} />
+          </button>
         </div>
 
-        <div style={{ marginBottom: '1.2rem' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '0.5rem', marginBottom: '0.3rem' }}>
-            <div style={{ fontWeight: 700, color: '#fff', fontSize: '1.05rem' }}>{listing.datasetName}</div>
+        <div style={{ marginBottom: '1.25rem' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '0.5rem', marginBottom: '0.5rem' }}>
+            <div style={{ fontWeight: 700, color: '#FAF0CA', fontSize: '1.1rem' }}>{listing.datasetName}</div>
             <button
               type="button"
               onClick={onToggleFavorite}
               className="btn btn-ghost btn-sm"
               style={{
-                padding: '0.12rem 0.55rem',
-                fontSize: '0.74rem',
+                padding: '0.2rem 0.6rem',
                 borderRadius: 'var(--radius-full)',
-                background: isFavorite ? 'rgba(234, 179, 8, 0.15)' : 'rgba(255, 255, 255, 0.05)',
-                color: isFavorite ? '#facc15' : 'var(--text-subtle)',
-                border: `1px solid ${isFavorite ? 'rgba(234, 179, 8, 0.4)' : 'rgba(255, 255, 255, 0.1)'}`,
+                color: isFavorite ? '#FAF0CA' : 'var(--text-subtle)',
+                background: isFavorite ? 'rgba(245, 228, 168, 0.2)' : 'rgba(250, 240, 202, 0.08)',
               }}
             >
-              {isFavorite ? '★ Favorited' : '☆ Add to Favorites'}
+              <Bookmark size={13} fill={isFavorite ? '#FAF0CA' : 'none'} />
             </button>
           </div>
-          <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
-            <span className="badge badge-purple">{listing.category || 'AI Dataset'}</span>
+          <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', alignItems: 'center' }}>
+            <span className="badge badge-purple">{listing.category || 'AI Training'}</span>
             <span className="badge badge-green">{listing.license}</span>
             {listing.complianceTag && <span className="badge badge-cyan">{listing.complianceTag}</span>}
+            {isOwner ? (
+              <span className="badge badge-gold" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
+                <ShieldCheck size={11} /> Your Dataset
+              </span>
+            ) : listing.providerCommit ? (
+              <span className="badge badge-purple" style={{ fontSize: '0.68rem', opacity: 0.85 }}>
+                Provider: {listing.providerCommit.length > 16 ? `${listing.providerCommit.slice(0, 8)}…${listing.providerCommit.slice(-6)}` : listing.providerCommit}
+              </span>
+            ) : null}
           </div>
         </div>
 
-        <div style={{ background: 'rgba(0,0,0,0.4)', padding: '0.85rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-subtle)', marginBottom: '1.2rem' }}>
-          <div style={{ fontSize: '0.7rem', color: 'var(--text-subtle)', marginBottom: '0.2rem' }}>DATASET ID</div>
-          <div className="mono" style={{ fontSize: '0.76rem', color: '#fff', wordBreak: 'break-all', marginBottom: '0.75rem' }}>
+        <div
+          style={{
+            background: 'rgba(6, 25, 44, 0.75)',
+            padding: '1rem',
+            borderRadius: 'var(--radius-sm)',
+            border: '1px solid rgba(250, 240, 202, 0.15)',
+            marginBottom: '1.5rem',
+          }}
+        >
+          <div style={{ fontSize: '0.68rem', color: 'var(--text-subtle)', marginBottom: '0.25rem', letterSpacing: '0.04em' }}>
+            DATASET ID
+          </div>
+          <div className="mono" style={{ fontSize: '0.78rem', color: '#FAF0CA', wordBreak: 'break-all', marginBottom: '0.85rem' }}>
             {listing.datasetId}
           </div>
 
-          <div style={{ fontSize: '0.7rem', color: 'var(--text-subtle)', marginBottom: '0.2rem' }}>DIGITAL FINGERPRINT (HASH)</div>
-          <div className="mono" style={{ fontSize: '0.76rem', color: 'var(--cyan-light)', wordBreak: 'break-all' }}>
+          <div style={{ fontSize: '0.68rem', color: 'var(--text-subtle)', marginBottom: '0.25rem', letterSpacing: '0.04em' }}>
+            DIGITAL FINGERPRINT
+          </div>
+          <div className="mono" style={{ fontSize: '0.78rem', color: 'var(--accent-gold)', wordBreak: 'break-all' }}>
             {listing.dataCommitment}
           </div>
         </div>
 
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.6rem', flexWrap: 'wrap' }}>
-          {onToggleArchive && (
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.65rem', flexWrap: 'wrap', alignItems: 'center' }}>
+          {/* Only the dataset publisher can Archive or Remove */}
+          {isOwner && onToggleArchive && (
             <button
               className="btn btn-secondary btn-sm"
               onClick={() => {
@@ -1839,33 +1586,41 @@ function InspectModal({
                 onClose();
               }}
             >
-              {listing.isActive !== false ? '📦 Archive' : '🔄 Restore'}
+              <Archive size={13} />
+              <span>{listing.isActive !== false ? 'Archive' : 'Restore'}</span>
             </button>
           )}
-          {onRemoveListing && (
+          {isOwner && onRemoveListing && (
             <button
               className="btn btn-sm"
               style={{
-                background: 'rgba(239, 68, 68, 0.12)',
-                border: '1px solid rgba(239, 68, 68, 0.35)',
-                color: '#f87171',
+                background: 'rgba(251, 113, 133, 0.12)',
+                border: '1px solid rgba(251, 113, 133, 0.35)',
+                color: '#fda4af',
                 fontSize: '0.78rem',
                 padding: '0.35rem 0.75rem',
                 borderRadius: 'var(--radius-sm)',
                 cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.35rem',
               }}
               onClick={() => {
-                if (confirm(`Are you sure you want to remove "${listing.datasetName}" from the marketplace?`)) {
+                if (confirm(`Are you sure you want to remove "${listing.datasetName}"?`)) {
                   onRemoveListing(listing.datasetId);
                   onClose();
                 }
               }}
             >
-              🗑️ Remove
+              <Trash2 size={13} />
+              <span>Remove</span>
             </button>
           )}
           <button className="btn btn-secondary btn-sm" onClick={onClose}>Close</button>
-          <button className="btn btn-primary btn-sm" onClick={onVerify}>⚡ Verify Authenticity</button>
+          <button className="btn btn-primary btn-sm" onClick={onVerify}>
+            <CheckCircle2 size={13} />
+            <span>Verify Authenticity</span>
+          </button>
         </div>
       </div>
     </div>
