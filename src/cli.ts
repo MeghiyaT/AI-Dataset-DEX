@@ -77,6 +77,7 @@ export async function connect(): Promise<CliContext> {
     compiledContract,
     contractAddress: deployment.address,
     privateStateId: PRIVATE_STATE_ID,
+    initialPrivateState: {},
   });
 
   return {
