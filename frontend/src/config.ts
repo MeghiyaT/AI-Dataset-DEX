@@ -35,6 +35,12 @@ export const INDEXER_URL: string =
 export const CONTRACT_ADDRESS: string =
   (import.meta.env.VITE_CONTRACT_ADDRESS as string) || '';
 
+// ─── Proof Server ─────────────────────────────────────────────────────────────
+
+/** Endpoint for the Midnight Proof Server container. Override via VITE_PROOF_SERVER_URL. */
+export const PROOF_SERVER_URL: string =
+  (import.meta.env.VITE_PROOF_SERVER_URL as string) || 'http://localhost:6300';
+
 // ─── UI Timing Constants ─────────────────────────────────────────────────────
 
 /**
