@@ -11,7 +11,7 @@ import { useState, useCallback, useEffect } from 'react';
 
 export interface UserProfile {
   nickname: string;
-  avatarEmoji: string;
+  avatarId: string;
   bio: string;
 }
 
@@ -39,7 +39,7 @@ export interface UserProfileHook {
 
 const DEFAULT_PROFILE: UserProfile = {
   nickname: '',
-  avatarEmoji: '🛡️',
+  avatarId: 'shield',
   bio: '',
 };
 
@@ -57,9 +57,14 @@ function loadProfile(address: string): UserProfile {
     if (raw) {
       const parsed = JSON.parse(raw);
       if (parsed && typeof parsed === 'object') {
+        let avatar = parsed.avatarId || parsed.avatarEmoji || DEFAULT_PROFILE.avatarId;
+        // If it was an old emoji string, default to shield
+        if (typeof avatar === 'string' && avatar.length > 0 && /[\u{1F300}-\u{1F9FF}]/u.test(avatar)) {
+          avatar = 'shield';
+        }
         return {
           nickname: parsed.nickname ?? DEFAULT_PROFILE.nickname,
-          avatarEmoji: parsed.avatarEmoji ?? DEFAULT_PROFILE.avatarEmoji,
+          avatarId: avatar || DEFAULT_PROFILE.avatarId,
           bio: parsed.bio ?? DEFAULT_PROFILE.bio,
         };
       }

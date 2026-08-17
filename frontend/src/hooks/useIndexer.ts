@@ -133,8 +133,8 @@ export interface IndexerHook {
   contractAddress: string;
   addOptimisticListing: (listing: DataListing) => void;
   incrementVerifiedCount: () => void;
-  toggleArchiveListing: (datasetId: string) => void;
-  removeListing: (datasetId: string) => void;
+  toggleArchiveListing: (datasetId: string, callerAddress?: string | null) => boolean;
+  removeListing: (datasetId: string, callerAddress?: string | null) => boolean;
 }
 
 function getInitialListings(): DataListing[] {
@@ -215,10 +215,28 @@ export function useIndexer(): IndexerHook {
     });
   }, []);
 
-  const toggleArchiveListing = useCallback((datasetId: string) => {
+  const toggleArchiveListing = useCallback((datasetId: string, callerAddress?: string | null): boolean => {
     const cleanId = datasetId.startsWith('0x') ? datasetId.slice(2) : datasetId;
+    let authorized = false;
 
     setState((prev) => {
+      const target = prev.listings.find((l) => l.datasetId === cleanId);
+      if (!target) return prev;
+
+      if (callerAddress && target.providerCommit) {
+        const cleanCaller = callerAddress.trim().toLowerCase();
+        const cleanProvider = target.providerCommit.trim().toLowerCase();
+        const isAuth =
+          cleanProvider === cleanCaller ||
+          cleanProvider === cleanCaller.replace(/^mn_addr(?:_[a-z0-9]+)?1/, '') ||
+          cleanCaller === cleanProvider.replace(/^mn_addr(?:_[a-z0-9]+)?1/, '');
+        if (!isAuth) {
+          console.warn('[useIndexer] Unauthorized attempt to archive dataset by', callerAddress);
+          return prev;
+        }
+      }
+
+      authorized = true;
       const updatedListings = prev.listings.map((l) => {
         if (l.datasetId === cleanId) {
           return { ...l, isActive: !l.isActive };
@@ -232,12 +250,32 @@ export function useIndexer(): IndexerHook {
         lastSyncedAt: new Date(),
       };
     });
+
+    return authorized;
   }, []);
 
-  const removeListing = useCallback((datasetId: string) => {
+  const removeListing = useCallback((datasetId: string, callerAddress?: string | null): boolean => {
     const cleanId = datasetId.startsWith('0x') ? datasetId.slice(2) : datasetId;
+    let authorized = false;
 
     setState((prev) => {
+      const target = prev.listings.find((l) => l.datasetId === cleanId);
+      if (!target) return prev;
+
+      if (callerAddress && target.providerCommit) {
+        const cleanCaller = callerAddress.trim().toLowerCase();
+        const cleanProvider = target.providerCommit.trim().toLowerCase();
+        const isAuth =
+          cleanProvider === cleanCaller ||
+          cleanProvider === cleanCaller.replace(/^mn_addr(?:_[a-z0-9]+)?1/, '') ||
+          cleanCaller === cleanProvider.replace(/^mn_addr(?:_[a-z0-9]+)?1/, '');
+        if (!isAuth) {
+          console.warn('[useIndexer] Unauthorized attempt to remove dataset by', callerAddress);
+          return prev;
+        }
+      }
+
+      authorized = true;
       const updatedListings = prev.listings.filter((l) => l.datasetId !== cleanId);
       saveLocalListings(updatedListings);
       return {
@@ -246,6 +284,8 @@ export function useIndexer(): IndexerHook {
         lastSyncedAt: new Date(),
       };
     });
+
+    return authorized;
   }, []);
 
   const incrementVerifiedCount = useCallback(() => {
