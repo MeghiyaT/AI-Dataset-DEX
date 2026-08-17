@@ -10,7 +10,7 @@ interface IconProps {
 }
 
 /**
- * Authentic Midnight Lace Wallet SVG Logo
+ * Authentic Lace Wallet SVG Logo
  * The iconic multi-colored Lace spiral vortex / swirl (amber -> magenta -> purple -> cyan)
  * on a clean transparent background.
  */

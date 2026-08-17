@@ -7,6 +7,15 @@ import type { MidnightHook } from '../hooks/useMidnight';
 import { WALLET_INSTALL_URLS } from '../hooks/useMidnight';
 import { WalletIcon, MidnightTokenIcon } from './WalletIcons';
 import { COPY_FEEDBACK_MS } from '../config';
+import {
+  ChevronDown,
+  Check,
+  Copy,
+  Info,
+  ExternalLink,
+  LogOut,
+  X
+} from 'lucide-react';
 
 interface Props {
   hook: MidnightHook;
@@ -54,11 +63,11 @@ export function WalletConnect({ hook }: Props) {
             id="btn-connect-wallet"
             className="btn btn-primary btn-sm"
             onClick={() => setShowMenu(!showMenu)}
-            style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 600 }}
+            style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', fontWeight: 700 }}
           >
             <MidnightTokenIcon size={16} />
             <span>Connect Wallet</span>
-            <span style={{ fontSize: '0.7rem', opacity: 0.8 }}>▾</span>
+            <ChevronDown size={14} style={{ opacity: 0.8 }} />
           </button>
 
           {showMenu && (
@@ -67,26 +76,28 @@ export function WalletConnect({ hook }: Props) {
                 position: 'absolute',
                 top: 'calc(100% + 10px)',
                 right: 0,
-                width: 330,
-                background: '#0c0f1d',
-                border: '1px solid rgba(139, 92, 246, 0.35)',
+                width: 340,
+                maxWidth: 'calc(100vw - 2rem)',
+                background: 'rgba(10, 43, 74, 0.96)',
+                border: '1px solid rgba(250, 240, 202, 0.28)',
                 borderRadius: 'var(--radius-md)',
                 padding: '1.2rem',
-                boxShadow: '0 20px 48px rgba(0, 0, 0, 0.8), 0 0 20px rgba(139, 92, 246, 0.15)',
+                boxShadow: '0 20px 48px rgba(4, 18, 32, 0.85), 0 0 24px rgba(13, 59, 102, 0.6)',
+                backdropFilter: 'blur(24px)',
+                WebkitBackdropFilter: 'blur(24px)',
                 zIndex: 1000,
-                animation: 'fadeIn 0.2s ease',
               }}
             >
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.35rem' }}>
-                <div style={{ fontSize: '0.92rem', fontWeight: 700, color: '#fff' }}>
-                  Connect to Midnight
+                <div style={{ fontSize: '0.92rem', fontWeight: 700, color: 'var(--text-main)' }}>
+                  Connect Wallet
                 </div>
-                <span className="badge badge-purple" style={{ fontSize: '0.65rem' }}>
+                <span className="badge badge-plum" style={{ fontSize: '0.65rem' }}>
                   {targetNetwork.toUpperCase()}
                 </span>
               </div>
               <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: '1rem', lineHeight: 1.45 }}>
-                Select your Midnight browser wallet to sign zero-knowledge proofs.
+                Choose a wallet to browse, share, or verify datasets securely.
               </p>
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
@@ -101,16 +112,16 @@ export function WalletConnect({ hook }: Props) {
                     style={{
                       justifyContent: 'space-between',
                       padding: '0.65rem 0.85rem',
-                      background: 'rgba(6, 182, 212, 0.06)',
-                      border: '1px solid rgba(6, 182, 212, 0.25)',
+                      background: 'rgba(250, 240, 202, 0.08)',
+                      border: '1px solid rgba(250, 240, 202, 0.2)',
                     }}
                   >
                     <span style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
                       <WalletIcon type="1am" iconUrl={hook.oneAmIcon} size={22} />
                       <span style={{ fontWeight: 600 }}>1AM Wallet</span>
                     </span>
-                    <span className="badge badge-cyan" style={{ fontSize: '0.65rem' }}>
-                      ✓ Detected
+                    <span className="badge badge-green" style={{ fontSize: '0.65rem' }}>
+                      <Check size={11} /> Detected
                     </span>
                   </button>
                 ) : (
@@ -131,12 +142,12 @@ export function WalletConnect({ hook }: Props) {
                       <span>1AM Wallet</span>
                     </span>
                     <span className="badge badge-subtle" style={{ fontSize: '0.65rem' }}>
-                      Install ↗
+                      Install <ExternalLink size={10} style={{ marginLeft: 2 }} />
                     </span>
                   </a>
                 )}
 
-                {/* Midnight Lace */}
+                {/* Lace */}
                 {isLaceAvailable ? (
                   <button
                     className="btn btn-secondary btn-sm"
@@ -147,16 +158,16 @@ export function WalletConnect({ hook }: Props) {
                     style={{
                       justifyContent: 'space-between',
                       padding: '0.65rem 0.85rem',
-                      background: 'rgba(139, 92, 246, 0.06)',
-                      border: '1px solid rgba(139, 92, 246, 0.25)',
+                      background: 'rgba(250, 240, 202, 0.08)',
+                      border: '1px solid rgba(250, 240, 202, 0.2)',
                     }}
                   >
                     <span style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
                       <WalletIcon type="lace" iconUrl={hook.laceIcon} size={22} />
-                      <span style={{ fontWeight: 600 }}>Midnight Lace</span>
+                      <span style={{ fontWeight: 600 }}>Lace</span>
                     </span>
                     <span className="badge badge-purple" style={{ fontSize: '0.65rem' }}>
-                      ✓ Detected
+                      <Check size={11} /> Detected
                     </span>
                   </button>
                 ) : (
@@ -174,10 +185,10 @@ export function WalletConnect({ hook }: Props) {
                   >
                     <span style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
                       <WalletIcon type="lace" iconUrl={hook.laceIcon} size={22} />
-                      <span>Midnight Lace</span>
+                      <span>Lace</span>
                     </span>
                     <span className="badge badge-subtle" style={{ fontSize: '0.65rem' }}>
-                      Install ↗
+                      Install <ExternalLink size={10} style={{ marginLeft: 2 }} />
                     </span>
                   </a>
                 )}
@@ -195,21 +206,17 @@ export function WalletConnect({ hook }: Props) {
         </button>
       )}
 
-      {/* ── Error State ──────────────────────────────────────────────────── */}
+      {/* ── Error / Unlock Required State ───────────────────────────────── */}
       {walletState.status === 'error' && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+        <div style={{ position: 'relative' }}>
           <button
             id="btn-reconnect-wallet"
             className="btn btn-sm"
-            title={walletState.message}
-            onClick={() => {
-              hook.clearError();
-              setShowMenu(true);
-            }}
+            onClick={() => setShowMenu(!showMenu)}
             style={{
-              background: 'rgba(239, 68, 68, 0.12)',
-              border: '1px solid rgba(239, 68, 68, 0.4)',
-              color: '#f87171',
+              background: 'rgba(250, 240, 202, 0.12)',
+              border: '1px solid rgba(250, 240, 202, 0.35)',
+              color: '#FAF0CA',
               fontSize: '0.78rem',
               padding: '0.35rem 0.85rem',
               borderRadius: 'var(--radius-full)',
@@ -219,9 +226,85 @@ export function WalletConnect({ hook }: Props) {
               gap: '0.4rem',
             }}
           >
-            <span>⚠️</span>
-            <span>Wallet Error — Retry</span>
+            <Info size={13} color="#FAF0CA" />
+            <span>{walletState.message.toLowerCase().includes('unlock') ? 'Unlock Wallet to Connect' : 'Connection Notice — Click for Help'}</span>
+            <ChevronDown size={13} style={{ opacity: 0.7 }} />
           </button>
+
+          {showMenu && (
+            <div
+              style={{
+                position: 'absolute',
+                top: 'calc(100% + 10px)',
+                right: 0,
+                width: 340,
+                maxWidth: 'calc(100vw - 2rem)',
+                background: 'rgba(10, 43, 74, 0.98)',
+                border: '1px solid rgba(250, 240, 202, 0.28)',
+                borderRadius: 'var(--radius-md)',
+                padding: '1.25rem',
+                boxShadow: '0 20px 48px rgba(4, 18, 32, 0.85)',
+                backdropFilter: 'blur(24px)',
+                WebkitBackdropFilter: 'blur(24px)',
+                zIndex: 1000,
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 700, color: '#FAF0CA', fontSize: '0.92rem' }}>
+                  <Info size={16} />
+                  <span>Wallet Unlock Required</span>
+                </div>
+                <button
+                  onClick={() => setShowMenu(false)}
+                  style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: 0 }}
+                >
+                  <X size={14} />
+                </button>
+              </div>
+
+              <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '1rem', lineHeight: 1.45 }}>
+                Your browser wallet extension is currently locked to protect your keys. Follow these 2 steps to connect:
+              </p>
+
+              <div style={{ background: 'rgba(6, 25, 44, 0.65)', border: '1px solid rgba(250, 240, 202, 0.15)', borderRadius: 'var(--radius-sm)', padding: '0.85rem', marginBottom: '1rem' }}>
+                <div style={{ display: 'flex', gap: '0.6rem', marginBottom: '0.65rem', alignItems: 'flex-start' }}>
+                  <span style={{ width: 20, height: 20, borderRadius: '50%', background: 'rgba(250, 240, 202, 0.15)', color: '#FAF0CA', fontSize: '0.72rem', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontWeight: 700 }}>1</span>
+                  <div style={{ fontSize: '0.78rem', color: 'var(--text-main)' }}>
+                    Click the <strong>Lace</strong> or <strong>1AM</strong> icon in your browser toolbar.
+                  </div>
+                </div>
+                <div style={{ display: 'flex', gap: '0.6rem', alignItems: 'flex-start' }}>
+                  <span style={{ width: 20, height: 20, borderRadius: '50%', background: 'rgba(250, 240, 202, 0.15)', color: '#FAF0CA', fontSize: '0.72rem', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontWeight: 700 }}>2</span>
+                  <div style={{ fontSize: '0.78rem', color: 'var(--text-main)' }}>
+                    Enter your password to unlock the wallet.
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', gap: '0.5rem' }}>
+                <button
+                  className="btn btn-secondary btn-sm"
+                  style={{ flex: 1 }}
+                  onClick={() => {
+                    hook.clearError();
+                    setShowMenu(false);
+                  }}
+                >
+                  Dismiss
+                </button>
+                <button
+                  className="btn btn-primary btn-sm"
+                  style={{ flex: 1 }}
+                  onClick={() => {
+                    hook.clearError();
+                    connect(isLaceAvailable ? 'lace' : '1am');
+                  }}
+                >
+                  Retry Connection
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -232,12 +315,12 @@ export function WalletConnect({ hook }: Props) {
           <div
             style={{
               padding: '0.35rem 0.75rem',
-              background: 'rgba(139, 92, 246, 0.12)',
-              border: '1px solid rgba(139, 92, 246, 0.3)',
+              background: 'rgba(250, 240, 202, 0.12)',
+              border: '1px solid rgba(250, 240, 202, 0.28)',
               borderRadius: 'var(--radius-full)',
               fontSize: '0.8rem',
               fontWeight: 600,
-              color: 'var(--primary-light)',
+              color: '#FAF0CA',
               display: 'flex',
               alignItems: 'center',
               gap: '0.45rem',
@@ -258,11 +341,13 @@ export function WalletConnect({ hook }: Props) {
               display: 'flex',
               alignItems: 'center',
               gap: '0.5rem',
+              background: 'rgba(13, 59, 102, 0.55)',
+              border: '1px solid rgba(250, 240, 202, 0.28)',
             }}
           >
             <WalletIcon type={walletState.walletType} iconUrl={walletState.iconUrl} size={16} />
             <span className="mono">{truncate(walletState.address)}</span>
-            <span style={{ fontSize: '0.65rem', opacity: 0.7 }}>▾</span>
+            <ChevronDown size={13} style={{ opacity: 0.7 }} />
           </button>
 
           {showMenu && (
@@ -271,25 +356,27 @@ export function WalletConnect({ hook }: Props) {
                 position: 'absolute',
                 top: 'calc(100% + 10px)',
                 right: 0,
-                width: 320,
-                background: '#0c0f1d',
+                width: 330,
+                maxWidth: 'calc(100vw - 2rem)',
+                background: 'rgba(10, 43, 74, 0.96)',
                 border: '1px solid var(--border-hover)',
                 borderRadius: 'var(--radius-md)',
                 padding: '1.1rem',
-                boxShadow: '0 20px 48px rgba(0, 0, 0, 0.8), 0 0 24px rgba(139, 92, 246, 0.12)',
+                boxShadow: '0 20px 48px rgba(4, 18, 32, 0.85), 0 0 24px rgba(13, 59, 102, 0.6)',
+                backdropFilter: 'blur(24px)',
+                WebkitBackdropFilter: 'blur(24px)',
                 zIndex: 1000,
-                animation: 'fadeIn 0.2s ease',
               }}
             >
               {/* Header Badges */}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.85rem' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
                   <WalletIcon type={walletState.walletType} iconUrl={walletState.iconUrl} size={18} />
-                  <span style={{ fontWeight: 700, fontSize: '0.85rem', color: '#fff' }}>
+                  <span style={{ fontWeight: 700, fontSize: '0.85rem', color: '#FAF0CA' }}>
                     {walletState.connectorName}
                   </span>
                 </div>
-                <span className={`badge ${walletState.network === 'preview' ? 'badge-cyan' : 'badge-emerald'}`} style={{ fontSize: '0.65rem' }}>
+                <span className="badge badge-plum" style={{ fontSize: '0.65rem' }}>
                   {walletState.network.toUpperCase()}
                 </span>
               </div>
@@ -298,27 +385,31 @@ export function WalletConnect({ hook }: Props) {
               {switchNotification && (
                 <div
                   style={{
-                    background: 'rgba(239, 68, 68, 0.12)',
-                    border: '1px solid rgba(239, 68, 68, 0.35)',
+                    background: 'rgba(250, 240, 202, 0.12)',
+                    border: '1px solid rgba(250, 240, 202, 0.3)',
                     borderRadius: 'var(--radius-sm)',
-                    padding: '0.5rem 0.65rem',
-                    fontSize: '0.73rem',
-                    color: '#fca5a5',
+                    padding: '0.65rem 0.75rem',
                     marginBottom: '0.75rem',
-                    lineHeight: 1.4,
                     display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'flex-start',
-                    gap: '0.5rem',
+                    flexDirection: 'column',
+                    gap: '0.45rem',
                   }}
                 >
-                  <div>{switchNotification}</div>
-                  <button
-                    onClick={clearSwitchNotification}
-                    style={{ background: 'none', border: 'none', color: '#fca5a5', cursor: 'pointer', fontSize: '0.75rem', padding: 0 }}
-                  >
-                    ✕
-                  </button>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', color: '#FAF0CA', fontWeight: 700, fontSize: '0.78rem' }}>
+                      <Info size={13} color="#FAF0CA" />
+                      <span>{switchNotification.toLowerCase().includes('unlock') ? 'Wallet Unlock Required' : 'Switch Notice'}</span>
+                    </div>
+                    <button
+                      onClick={clearSwitchNotification}
+                      style={{ background: 'none', border: 'none', color: '#FAF0CA', opacity: 0.7, cursor: 'pointer', padding: 0 }}
+                    >
+                      <X size={12} />
+                    </button>
+                  </div>
+                  <div style={{ fontSize: '0.72rem', color: 'var(--text-main)', lineHeight: 1.45 }}>
+                    {switchNotification}
+                  </div>
                 </div>
               )}
 
@@ -326,17 +417,23 @@ export function WalletConnect({ hook }: Props) {
               {walletState.network !== targetNetwork && (
                 <div
                   style={{
-                    background: 'rgba(6, 182, 212, 0.1)',
-                    border: '1px solid rgba(6, 182, 212, 0.3)',
+                    background: 'rgba(255, 243, 230, 0.08)',
+                    border: '1px solid rgba(255, 243, 230, 0.2)',
                     borderRadius: 'var(--radius-sm)',
                     padding: '0.5rem 0.65rem',
                     fontSize: '0.72rem',
-                    color: 'var(--cyan-light)',
+                    color: '#FFF3E6',
                     marginBottom: '0.75rem',
                     lineHeight: 1.4,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.4rem',
                   }}
                 >
-                  ℹ️ Connected to <strong>{walletState.network.toUpperCase()}</strong>. Target network is {targetNetwork.toUpperCase()}.
+                  <Info size={14} style={{ flexShrink: 0 }} />
+                  <span>
+                    Connected to <strong>{walletState.network.toUpperCase()}</strong>. Target network is {targetNetwork.toUpperCase()}.
+                  </span>
                 </div>
               )}
 
@@ -347,8 +444,8 @@ export function WalletConnect({ hook }: Props) {
                 </div>
                 <div
                   style={{
-                    background: 'rgba(0,0,0,0.4)',
-                    border: '1px solid rgba(255,255,255,0.06)',
+                    background: 'rgba(20, 7, 18, 0.6)',
+                    border: '1px solid rgba(255,255,255,0.08)',
                     padding: '0.5rem 0.65rem',
                     borderRadius: 'var(--radius-sm)',
                     fontSize: '0.74rem',
@@ -362,18 +459,22 @@ export function WalletConnect({ hook }: Props) {
                   <button
                     onClick={() => copy(walletState.address)}
                     style={{
-                      background: copied ? 'rgba(16, 185, 129, 0.2)' : 'rgba(139, 92, 246, 0.15)',
-                      border: copied ? '1px solid rgba(16, 185, 129, 0.4)' : '1px solid rgba(139, 92, 246, 0.3)',
-                      color: copied ? 'var(--emerald-light)' : 'var(--primary-light)',
+                      background: copied ? 'rgba(52, 211, 153, 0.2)' : 'rgba(255, 243, 230, 0.1)',
+                      border: copied ? '1px solid rgba(52, 211, 153, 0.4)' : '1px solid rgba(255, 243, 230, 0.2)',
+                      color: copied ? '#6ee7b7' : '#FFF3E6',
                       borderRadius: 'var(--radius-sm)',
                       padding: '0.2rem 0.5rem',
                       cursor: 'pointer',
                       fontSize: '0.7rem',
                       fontWeight: 600,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.25rem',
                       transition: 'all 0.2s ease',
                     }}
                   >
-                    {copied ? '✓ Copied' : 'Copy'}
+                    {copied ? <Check size={11} /> : <Copy size={11} />}
+                    <span>{copied ? 'Copied' : 'Copy'}</span>
                   </button>
                 </div>
               </div>
@@ -398,10 +499,10 @@ export function WalletConnect({ hook }: Props) {
                     >
                       <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                         <WalletIcon type="lace" iconUrl={hook.laceIcon} size={18} />
-                        <span>Switch to Midnight Lace</span>
+                        <span>Switch to Lace</span>
                       </span>
                       <span className="badge badge-purple" style={{ fontSize: '0.62rem' }}>
-                        {isSwitching ? '...' : 'Detected ✓'}
+                        {isSwitching ? '...' : 'Detected'}
                       </span>
                     </button>
                   ) : (
@@ -420,10 +521,10 @@ export function WalletConnect({ hook }: Props) {
                     >
                       <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                         <WalletIcon type="lace" iconUrl={hook.laceIcon} size={18} />
-                        <span>Get Midnight Lace</span>
+                        <span>Get Lace</span>
                       </span>
                       <span className="badge badge-subtle" style={{ fontSize: '0.62rem' }}>
-                        Install ↗
+                        Install <ExternalLink size={9} style={{ marginLeft: 2 }} />
                       </span>
                     </a>
                   )
@@ -444,7 +545,7 @@ export function WalletConnect({ hook }: Props) {
                       <span>Switch to 1AM Wallet</span>
                     </span>
                     <span className="badge badge-cyan" style={{ fontSize: '0.62rem' }}>
-                      {isSwitching ? '...' : 'Detected ✓'}
+                      {isSwitching ? '...' : 'Detected'}
                     </span>
                   </button>
                 ) : (
@@ -466,7 +567,7 @@ export function WalletConnect({ hook }: Props) {
                       <span>Get 1AM Wallet</span>
                     </span>
                     <span className="badge badge-subtle" style={{ fontSize: '0.62rem' }}>
-                      Install ↗
+                      Install <ExternalLink size={9} style={{ marginLeft: 2 }} />
                     </span>
                   </a>
                 )}
@@ -486,9 +587,13 @@ export function WalletConnect({ hook }: Props) {
                   borderTop: '1px solid var(--border-subtle)',
                   paddingTop: '0.6rem',
                   justifyContent: 'center',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.35rem',
                 }}
               >
-                Disconnect Wallet
+                <LogOut size={13} />
+                <span>Disconnect Wallet</span>
               </button>
             </div>
           )}
