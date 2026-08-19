@@ -10,6 +10,7 @@ import type { RegistryState, DataListing } from '../hooks/useIndexer';
 import type { UserProfileHook } from '../hooks/useUserProfile';
 import type { NavSection } from '../App';
 import { AvatarIcon, AVATAR_OPTIONS } from './AvatarIcon';
+import { ConfirmModal } from './ConfirmModal';
 import {
   User,
   Database,
@@ -73,6 +74,7 @@ export function ProfileDashboard({
   const [editingNickname, setEditingNickname] = useState(false);
   const [nicknameInput, setNicknameInput] = useState(profileHook.profile.nickname);
   const [copied, setCopied] = useState(false);
+  const [datasetToRemove, setDatasetToRemove] = useState<DataListing | null>(null);
 
   const { profile, transactions, updateProfile } = profileHook;
 
@@ -480,11 +482,7 @@ export function ProfileDashboard({
                     {onRemoveListing && (
                       <button
                         className="btn btn-sm"
-                        onClick={() => {
-                          if (confirm(`Are you sure you want to remove "${listing.datasetName}"?`)) {
-                            onRemoveListing(listing.datasetId);
-                          }
-                        }}
+                        onClick={() => setDatasetToRemove(listing)}
                         title="Remove dataset"
                         style={{
                           background: 'rgba(251, 113, 133, 0.12)',
@@ -629,6 +627,22 @@ export function ProfileDashboard({
           </div>
         </div>
       )}
+
+      <ConfirmModal
+        isOpen={Boolean(datasetToRemove)}
+        title="Remove Dataset"
+        itemName={datasetToRemove?.datasetName}
+        confirmText="Remove Dataset"
+        cancelText="Cancel"
+        variant="danger"
+        onConfirm={() => {
+          if (datasetToRemove && onRemoveListing) {
+            onRemoveListing(datasetToRemove.datasetId);
+          }
+          setDatasetToRemove(null);
+        }}
+        onCancel={() => setDatasetToRemove(null)}
+      />
     </div>
   );
 }
