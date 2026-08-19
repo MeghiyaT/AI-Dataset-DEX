@@ -11,13 +11,12 @@ import { AvatarIcon } from './components/AvatarIcon';
 import {
   ShieldCheck,
   Compass,
-  LayoutGrid,
   PlusCircle,
-  CheckCircle2,
   ExternalLink,
   BookOpen,
   Menu,
-  X
+  X,
+  ShoppingBag
 } from 'lucide-react';
 
 export type NavSection = 'about' | 'marketplace' | 'register' | 'verifier' | 'profile';
@@ -46,14 +45,12 @@ function App() {
 
   const profileHook = useUserProfile(walletAddress);
 
-  // If the wallet disconnects while on the profile page, redirect to home.
   const handleSelectSection = (sec: NavSection) => {
     if (sec === 'profile' && !walletAddress) return;
     setActiveSection(sec);
     setMobileMenuOpen(false);
   };
 
-  // When wallet disconnects, leave the profile page gracefully.
   const handleDisconnect = () => {
     if (activeSection === 'profile') setActiveSection('about');
     midnightHook.disconnect();
@@ -62,25 +59,24 @@ function App() {
   const isConnected = midnightHook.walletState.status === 'connected';
 
   const navLinks: { id: NavSection; label: string; icon: React.ReactNode }[] = [
-    { id: 'about', label: 'Overview', icon: <Compass size={15} /> },
-    { id: 'marketplace', label: 'Marketplace', icon: <LayoutGrid size={15} /> },
-    { id: 'register', label: 'Share Data', icon: <PlusCircle size={15} /> },
-    { id: 'verifier', label: 'Verify Data', icon: <CheckCircle2 size={15} /> },
+    { id: 'about', label: 'Overview', icon: <Compass size={14} /> },
+    { id: 'marketplace', label: 'Marketplace', icon: <ShoppingBag size={14} /> },
+    { id: 'register', label: 'List Dataset', icon: <PlusCircle size={14} /> },
+    { id: 'verifier', label: 'Verifier', icon: <ShieldCheck size={14} /> },
   ];
 
   return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
-      {/* ── Top Navigation Bar ─────────────────────────────────────────── */}
+      {/* ── Top Navigation Bar (Apple Frosted Glass) ────────────────────── */}
       <header
         style={{
-          borderBottom: '1px solid var(--border-glass)',
-          background: 'rgba(6, 25, 44, 0.92)',
-          backdropFilter: 'blur(24px)',
-          WebkitBackdropFilter: 'blur(24px)',
+          borderBottom: '1px solid var(--border-subtle)',
+          background: 'rgba(0, 0, 0, 0.8)',
+          backdropFilter: 'saturate(180%) blur(20px)',
+          WebkitBackdropFilter: 'saturate(180%) blur(20px)',
           position: 'sticky',
           top: 0,
           zIndex: 100,
-          boxShadow: '0 4px 24px rgba(4, 18, 32, 0.6)',
         }}
       >
         <div
@@ -89,41 +85,25 @@ function App() {
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
-            padding: '0.75rem 1.25rem',
+            padding: '0.75rem 1.5rem',
             gap: '1rem',
           }}
         >
-          {/* Main App Logo & Brand Identity */}
+          {/* Main Logo & Title */}
           <div
             style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', cursor: 'pointer', flexShrink: 0 }}
             onClick={() => handleSelectSection('about')}
           >
-            <AppLogo size={32} />
-            <div>
-              <div
-                style={{
-                  fontWeight: 800,
-                  fontSize: '1.15rem',
-                  letterSpacing: '-0.02em',
-                  fontFamily: 'Outfit, sans-serif',
-                  color: 'var(--text-main)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '0.35rem',
-                }}
-              >
-                <span>DataVault</span>
-                <span
-                  style={{
-                    background: 'linear-gradient(135deg, #FAF0CA 0%, #F5E4A8 100%)',
-                    WebkitBackgroundClip: 'text',
-                    WebkitTextFillColor: 'transparent',
-                    fontWeight: 900,
-                  }}
-                >
-                  AI
-                </span>
-              </div>
+            <AppLogo size={26} />
+            <div
+              style={{
+                fontWeight: 600,
+                fontSize: '1.05rem',
+                letterSpacing: '-0.02em',
+                color: 'var(--text-main)',
+              }}
+            >
+              Nocturne AI
             </div>
           </div>
 
@@ -137,104 +117,93 @@ function App() {
                   onClick={() => handleSelectSection(link.id)}
                   className="btn btn-ghost btn-sm"
                   style={{
-                    padding: '0.45rem 0.85rem',
+                    padding: '0.35rem 0.85rem',
                     fontSize: '0.84rem',
-                    borderRadius: 'var(--radius-sm)',
-                    background: isActive ? 'rgba(250, 240, 202, 0.15)' : 'transparent',
-                    color: isActive ? '#FAF0CA' : 'var(--text-muted)',
-                    border: isActive ? '1px solid rgba(250, 240, 202, 0.35)' : '1px solid transparent',
-                    fontWeight: isActive ? 700 : 500,
-                    backdropFilter: isActive ? 'blur(8px)' : 'none',
+                    borderRadius: 'var(--radius-full)',
+                    background: isActive ? 'rgba(255, 255, 255, 0.12)' : 'transparent',
+                    color: isActive ? '#ffffff' : 'var(--text-muted)',
+                    fontWeight: isActive ? 600 : 400,
                     display: 'flex',
                     alignItems: 'center',
                     gap: '0.4rem',
                     whiteSpace: 'nowrap',
                   }}
                 >
-                  <span style={{ opacity: isActive ? 1 : 0.75 }}>{link.icon}</span>
+                  <span>{link.icon}</span>
                   <span>{link.label}</span>
                 </button>
               );
             })}
 
-            {/* Profile button — visible when wallet is connected */}
+            {/* Profile button */}
             {isConnected && (
               <button
                 onClick={() => handleSelectSection('profile')}
                 className="btn btn-ghost btn-sm"
                 style={{
-                  padding: '0.45rem 0.85rem',
+                  padding: '0.35rem 0.85rem',
                   fontSize: '0.84rem',
-                  borderRadius: 'var(--radius-sm)',
-                  background: activeSection === 'profile' ? 'rgba(250, 240, 202, 0.18)' : 'rgba(13, 59, 102, 0.45)',
-                  color: activeSection === 'profile' ? '#FAF0CA' : 'var(--text-muted)',
-                  border: activeSection === 'profile' ? '1px solid rgba(250, 240, 202, 0.4)' : '1px solid rgba(250, 240, 202, 0.15)',
-                  fontWeight: activeSection === 'profile' ? 700 : 500,
+                  borderRadius: 'var(--radius-full)',
+                  background: activeSection === 'profile' ? 'rgba(255, 255, 255, 0.12)' : 'rgba(255, 255, 255, 0.05)',
+                  color: activeSection === 'profile' ? '#ffffff' : 'var(--text-muted)',
+                  fontWeight: activeSection === 'profile' ? 600 : 400,
                   display: 'flex',
                   alignItems: 'center',
                   gap: '0.4rem',
                   whiteSpace: 'nowrap',
                 }}
               >
-                <div
-                  style={{
-                    width: 18,
-                    height: 18,
-                    borderRadius: '50%',
-                    background: 'rgba(250, 240, 202, 0.18)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    color: '#FAF0CA',
-                  }}
-                >
-                  <AvatarIcon id={profileHook.profile.avatarId} size={11} />
-                </div>
+                <AvatarIcon avatarId={profileHook.profile.avatarId} size={13} />
                 <span>Profile</span>
               </button>
             )}
           </nav>
 
-          {/* Right: Wallet & Mobile Menu Toggle */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', flexShrink: 0 }}>
-            {/* Wallet Connect trigger */}
+          {/* Right: Wallet & Mobile Toggle */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexShrink: 0 }}>
             <WalletConnect hook={{ ...midnightHook, disconnect: handleDisconnect }} />
 
-            {/* Mobile Hamburger / X Toggle */}
             <button
               type="button"
-              className="btn btn-secondary btn-sm header-nav-mobile-toggle"
+              className="btn btn-secondary btn-sm mobile-menu-btn"
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
               aria-label="Toggle navigation menu"
-              style={{ padding: '0.45rem 0.55rem', borderRadius: 'var(--radius-sm)' }}
+              style={{ padding: '0.35rem 0.55rem' }}
             >
-              {mobileMenuOpen ? <X size={18} /> : <Menu size={18} />}
+              {mobileMenuOpen ? <X size={16} /> : <Menu size={16} />}
             </button>
           </div>
         </div>
 
-        {/* Mobile Dropdown Navigation Drawer */}
+        {/* Mobile Dropdown Drawer */}
         {mobileMenuOpen && (
-          <div className="header-mobile-drawer">
+          <div
+            style={{
+              padding: '0.75rem 1.5rem',
+              background: '#0a0a0c',
+              borderBottom: '1px solid var(--border-subtle)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '0.35rem',
+            }}
+          >
             {navLinks.map((link) => {
               const isActive = activeSection === link.id;
               return (
                 <button
                   key={link.id}
                   onClick={() => handleSelectSection(link.id)}
-                  className="btn btn-ghost"
+                  className="btn btn-ghost btn-sm"
                   style={{
                     justifyContent: 'flex-start',
-                    padding: '0.65rem 1rem',
-                    fontSize: '0.9rem',
+                    padding: '0.6rem 0.85rem',
                     borderRadius: 'var(--radius-sm)',
-                    background: isActive ? 'rgba(250, 240, 202, 0.14)' : 'transparent',
-                    color: isActive ? '#FAF0CA' : 'var(--text-muted)',
-                    border: isActive ? '1px solid rgba(250, 240, 202, 0.3)' : '1px solid transparent',
-                    fontWeight: isActive ? 700 : 500,
+                    background: isActive ? 'rgba(255, 255, 255, 0.1)' : 'transparent',
+                    color: isActive ? '#fff' : 'var(--text-muted)',
+                    fontWeight: isActive ? 600 : 400,
                   }}
                 >
-                  <span style={{ opacity: isActive ? 1 : 0.75 }}>{link.icon}</span>
+                  <span>{link.icon}</span>
                   <span>{link.label}</span>
                 </button>
               );
@@ -243,19 +212,17 @@ function App() {
             {isConnected && (
               <button
                 onClick={() => handleSelectSection('profile')}
-                className="btn btn-ghost"
+                className="btn btn-ghost btn-sm"
                 style={{
                   justifyContent: 'flex-start',
-                  padding: '0.65rem 1rem',
-                  fontSize: '0.9rem',
+                  padding: '0.6rem 0.85rem',
                   borderRadius: 'var(--radius-sm)',
-                  background: activeSection === 'profile' ? 'rgba(250, 240, 202, 0.18)' : 'rgba(13, 59, 102, 0.45)',
-                  color: activeSection === 'profile' ? '#FAF0CA' : 'var(--text-muted)',
-                  border: activeSection === 'profile' ? '1px solid rgba(250, 240, 202, 0.4)' : '1px solid rgba(250, 240, 202, 0.15)',
-                  fontWeight: activeSection === 'profile' ? 700 : 500,
+                  background: activeSection === 'profile' ? 'rgba(255, 255, 255, 0.1)' : 'rgba(255, 255, 255, 0.05)',
+                  color: activeSection === 'profile' ? '#fff' : 'var(--text-muted)',
+                  fontWeight: activeSection === 'profile' ? 600 : 400,
                 }}
               >
-                <AvatarIcon id={profileHook.profile.avatarId} size={16} />
+                <AvatarIcon avatarId={profileHook.profile.avatarId} size={14} />
                 <span>Profile</span>
               </button>
             )}
@@ -263,8 +230,8 @@ function App() {
         )}
       </header>
 
-      {/* ── Main Application Section ───────────────────────────────────────── */}
-      <main className="container" style={{ padding: '2.5rem 1.5rem 4rem', flex: 1 }}>
+      {/* ── Main Application Content ───────────────────────────────────────── */}
+      <main style={{ flex: 1 }}>
         <DatasetExchange
           walletApi={walletApi}
           walletState={midnightHook.walletState}
@@ -281,18 +248,18 @@ function App() {
           profileHook={profileHook}
           onRefresh={() => {
             indexer.refresh();
-            showToast('Datasets updated');
+            showToast('Marketplace updated');
           }}
           onAddListing={(listing) => {
             indexer.addOptimisticListing(listing);
-            showToast(`Dataset "${listing.datasetName}" published successfully!`);
+            showToast(`Dataset "${listing.datasetName}" listed successfully`);
           }}
           onToggleArchive={(datasetId) => {
             const ok = indexer.toggleArchiveListing(datasetId, walletAddress);
             if (ok) {
-              showToast('Dataset status updated');
+              showToast('Listing status updated');
             } else {
-              showToast('Unauthorized: Only the publishing wallet can archive this dataset');
+              showToast('Unauthorized: Only listing creator can modify this dataset');
             }
           }}
           onRemoveListing={(datasetId) => {
@@ -300,12 +267,12 @@ function App() {
             if (ok) {
               showToast('Dataset removed from marketplace');
             } else {
-              showToast('Unauthorized: Only the publishing wallet can remove this dataset');
+              showToast('Unauthorized: Only listing creator can remove this dataset');
             }
           }}
           onIncrementVerified={() => {
             indexer.incrementVerifiedCount();
-            showToast('Dataset verified successfully!');
+            showToast('Integrity proof verified on Midnight');
           }}
           laceIcon={midnightHook.laceIcon}
           oneAmIcon={midnightHook.oneAmIcon}
@@ -319,44 +286,43 @@ function App() {
             position: 'fixed',
             bottom: '2rem',
             right: '2rem',
-            background: 'rgba(10, 43, 74, 0.95)',
-            border: '1px solid rgba(250, 240, 202, 0.4)',
-            borderRadius: 'var(--radius-sm)',
-            padding: '0.85rem 1.25rem',
-            color: '#FAF0CA',
-            fontSize: '0.86rem',
-            boxShadow: '0 12px 36px rgba(4, 18, 32, 0.8), 0 0 16px rgba(13, 59, 102, 0.6)',
+            background: '#18181c',
+            border: '1px solid var(--border-glass)',
+            borderRadius: 'var(--radius-full)',
+            padding: '0.65rem 1.15rem',
+            color: '#f5f5f7',
+            fontSize: '0.84rem',
+            boxShadow: '0 8px 30px rgba(0, 0, 0, 0.6)',
             zIndex: 1000,
             display: 'flex',
             alignItems: 'center',
-            gap: '0.65rem',
-            backdropFilter: 'blur(16px)',
+            gap: '0.5rem',
           }}
         >
-          <ShieldCheck size={18} color="#34d399" />
+          <ShieldCheck size={16} color="var(--accent-emerald)" />
           <span>{toast}</span>
         </div>
       )}
 
-      {/* ── Footer (Glassmorphic) ──────────────────────────────────────────── */}
+      {/* ── Footer ────────────────────────────────────────────────────────── */}
       <footer
         style={{
-          borderTop: '1px solid var(--border-glass)',
-          padding: '2rem 1.5rem',
-          background: 'rgba(6, 25, 44, 0.92)',
+          borderTop: '1px solid var(--border-subtle)',
+          padding: '1.75rem 1.5rem',
+          background: '#000000',
           fontSize: '0.82rem',
           color: 'var(--text-subtle)',
-          backdropFilter: 'blur(16px)',
         }}
       >
         <div className="container" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-            <AppLogo size={22} />
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <AppLogo size={20} />
             <span>
-              DataVault AI · Safe & Private AI Dataset Exchange
+              <strong>Nocturne AI</strong> · Confidential AI Dataset DEX
             </span>
           </div>
-          <div style={{ display: 'flex', gap: '1.25rem', alignItems: 'center' }}>
+
+          <div style={{ display: 'flex', gap: '1.25rem', alignItems: 'center', flexWrap: 'wrap' }}>
             <a
               href="https://midnight.network"
               target="_blank"
@@ -364,7 +330,7 @@ function App() {
               style={{ color: 'var(--text-muted)', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}
             >
               <span>Midnight Network</span>
-              <ExternalLink size={12} />
+              <ExternalLink size={11} />
             </a>
             <a
               href="https://docs.midnight.network"
@@ -372,8 +338,8 @@ function App() {
               rel="noreferrer"
               style={{ color: 'var(--text-muted)', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}
             >
-              <span>Documentation</span>
-              <BookOpen size={12} />
+              <span>Docs</span>
+              <BookOpen size={11} />
             </a>
           </div>
         </div>
