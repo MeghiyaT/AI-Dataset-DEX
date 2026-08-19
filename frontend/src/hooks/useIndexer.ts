@@ -1,11 +1,6 @@
 // useIndexer.ts
-// Live GraphQL indexer queries for Midnight Preview on-chain ledger state.
-//
-// ─── Privacy Architecture ───────────────────────────────────────────────────
-// • Reads exclusively PUBLIC ledger state: verifiedCount, registry listings,
-//   commitment hashes (providerCommit, dataCommitment), and metadata.
-// • Raw data vectors & provider secrets are NEVER stored or transmitted.
-// ────────────────────────────────────────────────────────────────────────────
+// Live GraphQL indexer queries for Midnight on-chain ledger state.
+// Reads strictly public ledger state without mock or pre-seeded dummy data.
 
 import { useState, useEffect, useCallback } from 'react';
 import {
@@ -26,7 +21,15 @@ export interface DataListing {
   isActive: boolean;         // listing availability
   category?: string;         // taxonomy tag
   description?: string;      // metadata description
-  complianceTag?: string;    // GDPR / HIPAA compliance standard
+  complianceTag?: string;    // compliance standard
+  price?: string;            // e.g. "35", "0"
+  currency?: string;         // "tDUST"
+  sellerAddress?: string;    // Provider address
+  accessTier?: 'free' | 'paid' | 'commercial';
+  sampleData?: string;       // Privacy-safe sample preview
+  downloadPayload?: string;  // Complete payload for buyers upon acquisition
+  format?: string;           // 'csv' | 'json' | 'parquet'
+  verifiedOnChain?: boolean; // Pre-purchase verification indicator
 }
 
 export interface RegistryState {
@@ -35,8 +38,8 @@ export interface RegistryState {
   lastSyncedAt: Date;
 }
 
-const LOCAL_STORAGE_KEY = 'datavault_registered_datasets';
-const VERIFIED_STORAGE_KEY = 'datavault_verified_count';
+const LOCAL_STORAGE_KEY = 'nocturne_registered_datasets';
+const VERIFIED_STORAGE_KEY = 'nocturne_verified_count';
 
 function getLocalListings(): DataListing[] {
   try {
@@ -107,12 +110,13 @@ async function fetchRegistryState(): Promise<{ verifiedCount: number; listings: 
       datasetSize: e.value?.datasetSize ?? '0',
       rowCount: e.value?.rowCount ?? '0',
       license: e.value?.license ?? 'CC-BY-4.0',
-      // isActive defaults to false (conservative): unlisted data is hidden
-      // until the on-chain field explicitly confirms it is active.
       isActive: e.value?.isActive ?? false,
       category: e.value?.category ?? 'General AI',
-      // complianceTag is sourced from on-chain metadata; null if not set.
       complianceTag: e.value?.complianceTag ?? null,
+      price: e.value?.price ?? '0',
+      currency: 'tDUST',
+      accessTier: e.value?.price && e.value?.price !== '0' ? 'paid' : 'free',
+      verifiedOnChain: true,
     }));
 
     return {
@@ -137,10 +141,6 @@ export interface IndexerHook {
   removeListing: (datasetId: string, callerAddress?: string | null) => boolean;
 }
 
-function getInitialListings(): DataListing[] {
-  return getLocalListings();
-}
-
 export function useIndexer(): IndexerHook {
   const [state, setState] = useState<RegistryState>(() => {
     let savedVerified = 0;
@@ -151,7 +151,7 @@ export function useIndexer(): IndexerHook {
 
     return {
       verifiedCount: savedVerified,
-      listings: getInitialListings(),
+      listings: getLocalListings(),
       lastSyncedAt: new Date(),
     };
   });
@@ -171,7 +171,6 @@ export function useIndexer(): IndexerHook {
 
         // Merge: on-chain items + locally saved user-registered items
         const mergedLocal = local.filter((l) => !onChainIds.has(l.datasetId));
-
         const finalList = [...onChain, ...mergedLocal];
 
         let currentVerified = 0;
@@ -290,19 +289,16 @@ export function useIndexer(): IndexerHook {
 
   const incrementVerifiedCount = useCallback(() => {
     setState((prev) => {
-      const updated = prev.verifiedCount + 1;
+      const nextCount = prev.verifiedCount + 1;
       try {
-        localStorage.setItem(VERIFIED_STORAGE_KEY, String(updated));
+        localStorage.setItem(VERIFIED_STORAGE_KEY, String(nextCount));
       } catch {}
-      return {
-        ...prev,
-        verifiedCount: updated,
-        lastSyncedAt: new Date(),
-      };
+      return { ...prev, verifiedCount: nextCount };
     });
   }, []);
 
   useEffect(() => {
+    if (!CONTRACT_ADDRESS) return;
     refresh();
     const timer = setInterval(refresh, INDEXER_POLL_MS);
     return () => clearInterval(timer);

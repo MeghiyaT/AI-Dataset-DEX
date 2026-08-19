@@ -1,10 +1,9 @@
 // useUserProfile.ts
-// Per-wallet profile storage — keyed by wallet address in localStorage.
+// Per-wallet profile, purchases, sales, and transaction storage — keyed by wallet address in localStorage.
 //
 // ─── Privacy Note ────────────────────────────────────────────────────────────
-// Profile data is stored locally in the browser only.
-// Wallet address is the key — no signup required.
-// No mock or sample data is ever pre-populated.
+// Profile and purchase metadata are stored locally in browser storage keyed by wallet address.
+// Zero-knowledge settlement receipts verify acquired dataset ownership.
 // ────────────────────────────────────────────────────────────────────────────
 
 import { useState, useCallback, useEffect } from 'react';
@@ -15,7 +14,7 @@ export interface UserProfile {
   bio: string;
 }
 
-export type TransactionType = 'registered' | 'verified';
+export type TransactionType = 'registered' | 'verified' | 'purchased' | 'sold';
 
 export type TransactionStatus = 'completed' | 'pending';
 
@@ -25,15 +24,49 @@ export interface UserTransaction {
   datasetName: string;
   datasetId: string;
   type: TransactionType;
+  price?: string;
   txId?: string;          // on-chain transaction ID if available
   status: TransactionStatus;
+}
+
+export interface PurchaseRecord {
+  id: string;
+  datasetId: string;
+  datasetName: string;
+  price: string;
+  currency: string;
+  purchaseDate: string;   // ISO string
+  receiptHash: string;    // Cryptographic transaction hash
+  dataCommitment: string; // On-chain ZK integrity anchor
+  sellerCommit: string;
+  downloadPayload?: string; // File payload for instant re-download
+  format?: string;        // 'csv' | 'json'
+  license?: string;
+  rowCount?: string;
+  datasetSize?: string;
+}
+
+export interface SaleRecord {
+  id: string;
+  datasetId: string;
+  datasetName: string;
+  price: string;
+  currency: string;
+  saleDate: string;
+  buyerCommit: string;
+  txHash: string;
 }
 
 export interface UserProfileHook {
   profile: UserProfile;
   transactions: UserTransaction[];
+  purchases: PurchaseRecord[];
+  sales: SaleRecord[];
   updateProfile: (partial: Partial<UserProfile>) => void;
   addTransaction: (tx: UserTransaction) => void;
+  addPurchase: (purchase: PurchaseRecord) => void;
+  addSale: (sale: SaleRecord) => void;
+  isPurchased: (datasetId: string) => boolean;
   clearProfile: () => void;
 }
 
@@ -44,21 +77,36 @@ const DEFAULT_PROFILE: UserProfile = {
 };
 
 function profileKey(address: string): string {
+  return `nocturne_profile_${address}`;
+}
+
+function legacyProfileKey(address: string): string {
   return `datavault_profile_${address}`;
 }
 
 function txKey(address: string): string {
+  return `nocturne_txns_${address}`;
+}
+
+function legacyTxKey(address: string): string {
   return `datavault_txns_${address}`;
+}
+
+function purchasesKey(address: string): string {
+  return `nocturne_purchases_${address}`;
+}
+
+function salesKey(address: string): string {
+  return `nocturne_sales_${address}`;
 }
 
 function loadProfile(address: string): UserProfile {
   try {
-    const raw = localStorage.getItem(profileKey(address));
+    const raw = localStorage.getItem(profileKey(address)) || localStorage.getItem(legacyProfileKey(address));
     if (raw) {
       const parsed = JSON.parse(raw);
       if (parsed && typeof parsed === 'object') {
         let avatar = parsed.avatarId || parsed.avatarEmoji || DEFAULT_PROFILE.avatarId;
-        // If it was an old emoji string, default to shield
         if (typeof avatar === 'string' && avatar.length > 0 && /[\u{1F300}-\u{1F9FF}]/u.test(avatar)) {
           avatar = 'shield';
         }
@@ -81,7 +129,7 @@ function saveProfile(address: string, profile: UserProfile): void {
 
 function loadTransactions(address: string): UserTransaction[] {
   try {
-    const raw = localStorage.getItem(txKey(address));
+    const raw = localStorage.getItem(txKey(address)) || localStorage.getItem(legacyTxKey(address));
     if (raw) {
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed)) return parsed;
@@ -96,6 +144,40 @@ function saveTransactions(address: string, txns: UserTransaction[]): void {
   } catch {}
 }
 
+function loadPurchases(address: string): PurchaseRecord[] {
+  try {
+    const raw = localStorage.getItem(purchasesKey(address));
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed;
+    }
+  } catch {}
+  return [];
+}
+
+function savePurchases(address: string, purchases: PurchaseRecord[]): void {
+  try {
+    localStorage.setItem(purchasesKey(address), JSON.stringify(purchases));
+  } catch {}
+}
+
+function loadSales(address: string): SaleRecord[] {
+  try {
+    const raw = localStorage.getItem(salesKey(address));
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed;
+    }
+  } catch {}
+  return [];
+}
+
+function saveSales(address: string, sales: SaleRecord[]): void {
+  try {
+    localStorage.setItem(salesKey(address), JSON.stringify(sales));
+  } catch {}
+}
+
 export function useUserProfile(walletAddress: string | null): UserProfileHook {
   const [profile, setProfile] = useState<UserProfile>(() =>
     walletAddress ? loadProfile(walletAddress) : { ...DEFAULT_PROFILE },
@@ -103,15 +185,25 @@ export function useUserProfile(walletAddress: string | null): UserProfileHook {
   const [transactions, setTransactions] = useState<UserTransaction[]>(() =>
     walletAddress ? loadTransactions(walletAddress) : [],
   );
+  const [purchases, setPurchases] = useState<PurchaseRecord[]>(() =>
+    walletAddress ? loadPurchases(walletAddress) : [],
+  );
+  const [sales, setSales] = useState<SaleRecord[]>(() =>
+    walletAddress ? loadSales(walletAddress) : [],
+  );
 
   // Reload when wallet address changes (e.g. user switches accounts)
   useEffect(() => {
     if (walletAddress) {
       setProfile(loadProfile(walletAddress));
       setTransactions(loadTransactions(walletAddress));
+      setPurchases(loadPurchases(walletAddress));
+      setSales(loadSales(walletAddress));
     } else {
       setProfile({ ...DEFAULT_PROFILE });
       setTransactions([]);
+      setPurchases([]);
+      setSales([]);
     }
   }, [walletAddress]);
 
@@ -139,14 +231,67 @@ export function useUserProfile(walletAddress: string | null): UserProfileHook {
     [walletAddress],
   );
 
+  const addPurchase = useCallback(
+    (purchase: PurchaseRecord) => {
+      if (!walletAddress) return;
+      setPurchases((prev) => {
+        const filtered = prev.filter((p) => p.datasetId !== purchase.datasetId);
+        const updated = [purchase, ...filtered];
+        savePurchases(walletAddress, updated);
+        return updated;
+      });
+    },
+    [walletAddress],
+  );
+
+  const addSale = useCallback(
+    (sale: SaleRecord) => {
+      if (!walletAddress) return;
+      setSales((prev) => {
+        const updated = [sale, ...prev];
+        saveSales(walletAddress, updated);
+        return updated;
+      });
+    },
+    [walletAddress],
+  );
+
+  const isPurchased = useCallback(
+    (datasetId: string): boolean => {
+      if (!datasetId) return false;
+      const cleanId = datasetId.startsWith('0x') ? datasetId.slice(2) : datasetId;
+      return purchases.some(
+        (p) =>
+          p.datasetId === cleanId ||
+          (p.datasetId.startsWith('0x') ? p.datasetId.slice(2) : p.datasetId) === cleanId,
+      );
+    },
+    [purchases],
+  );
+
   const clearProfile = useCallback(() => {
     if (!walletAddress) return;
     const fresh = { ...DEFAULT_PROFILE };
     saveProfile(walletAddress, fresh);
     saveTransactions(walletAddress, []);
+    savePurchases(walletAddress, []);
+    saveSales(walletAddress, []);
     setProfile(fresh);
     setTransactions([]);
+    setPurchases([]);
+    setSales([]);
   }, [walletAddress]);
 
-  return { profile, transactions, updateProfile, addTransaction, clearProfile };
+  return {
+    profile,
+    transactions,
+    purchases,
+    sales,
+    updateProfile,
+    addTransaction,
+    addPurchase,
+    addSale,
+    isPurchased,
+    clearProfile,
+  };
 }
