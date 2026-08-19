@@ -1,0 +1,95 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <!-- Luxury Matte Obsidian Canvas Gradient -->
+    <radialGradient id="pfp-bg-radial" cx="50%" cy="50%" r="50%" fx="50%" fy="50%">
+      <stop offset="0%" stop-color="#0e0e14" />
+      <stop offset="65%" stop-color="#040406" />
+      <stop offset="100%" stop-color="#000000" />
+    </radialGradient>
+    
+    <!-- Chrome Vertical Gradient -->
+    <linearGradient id="cyber-chrome-vert" x1="512" y1="180" x2="512" y2="844" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#ffffff" />
+      <stop offset="50%" stop-color="#d1d1d6" />
+      <stop offset="100%" stop-color="#8e8e93" />
+    </linearGradient>
+
+    <!-- Chrome Wings Gradient -->
+    <linearGradient id="cyber-chrome-wings" x1="180" y1="180" x2="844" y2="844" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#ffffff" />
+      <stop offset="60%" stop-color="#a1a1a6" />
+      <stop offset="100%" stop-color="#48484a" />
+    </linearGradient>
+  </defs>
+
+  <!-- Background Circle Canvas -->
+  <circle cx="512" cy="512" r="512" fill="url(#pfp-bg-radial)" />
+  <circle cx="512" cy="512" r="510" stroke="rgba(255, 255, 255, 0.1)" stroke-width="2" />
+
+  <!-- Centered Cybersigilism Logo (Scaled to 640x640 in 1024x1024 frame) -->
+  <g transform="translate(512, 512) scale(20) translate(-16, -16)">
+    <!-- Outer Cybersigilism Thorned Barbs & Crescent Wings -->
+    <!-- Left Upper Thorn Blade -->
+    <path
+      d="M16 4C11 4 5 8 3 14C5 12 9 11 12 13C8 10 12 6 16 4Z"
+      fill="url(#cyber-chrome-wings)"
+      stroke="#ffffff"
+      stroke-width="0.5"
+    />
+    <!-- Right Upper Thorn Blade -->
+    <path
+      d="M16 4C21 4 27 8 29 14C27 12 23 11 20 13C24 10 20 6 16 4Z"
+      fill="url(#cyber-chrome-wings)"
+      stroke="#ffffff"
+      stroke-width="0.5"
+    />
+
+    <!-- Left Lower Scythe Spine with Barbs -->
+    <path
+      d="M3 14C2 18 5 25 12 28C9 25 8 21 11 18C7 20 5 17 3 14Z"
+      fill="url(#cyber-chrome-wings)"
+      stroke="#ffffff"
+      stroke-width="0.5"
+    />
+    <!-- Right Lower Scythe Spine with Barbs -->
+    <path
+      d="M29 14C30 18 27 25 20 28C23 25 24 21 21 18C25 20 27 17 29 14Z"
+      fill="url(#cyber-chrome-wings)"
+      stroke="#ffffff"
+      stroke-width="0.5"
+    />
+
+    <!-- Central Cybersigilism Cruciform Dagger Spire -->
+    <!-- Vertical Piercing Blade -->
+    <path
+      d="M16 1L17.5 10L16.8 15.2L16 16L15.2 15.2L14.5 10L16 1Z"
+      fill="#ffffff"
+    />
+    <path
+      d="M16 31L17.5 22L16.8 16.8L16 16L15.2 16.8L14.5 22L16 31Z"
+      fill="url(#cyber-chrome-vert)"
+    />
+
+    <!-- Horizontal Piercing Quillons -->
+    <path
+      d="M1 16L10 14.5L15.2 15.2L16 16L15.2 16.8L10 17.5L1 16Z"
+      fill="url(#cyber-chrome-vert)"
+    />
+    <path
+      d="M31 16L22 14.5L16.8 15.2L16 16L16.8 16.8L22 17.5L31 16Z"
+      fill="url(#cyber-chrome-vert)"
+    />
+
+    <!-- Diagonal Needle Intersects -->
+    <path d="M7 7L11 11M25 7L21 11M7 25L11 21M25 25L21 21" stroke="#ffffff" stroke-width="1" stroke-linecap="round" />
+
+    <!-- Center Zero-Knowledge Diamond Core & Sigil Eye -->
+    <path
+      d="M16 11.5L20.5 16L16 20.5L11.5 16L16 11.5Z"
+      fill="#000000"
+      stroke="#ffffff"
+      stroke-width="1.25"
+    />
+    <circle cx="16" cy="16" r="1.75" fill="#ffffff" />
+  </g>
+</svg>
