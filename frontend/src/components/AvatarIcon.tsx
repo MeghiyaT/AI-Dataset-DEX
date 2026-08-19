@@ -55,15 +55,17 @@ export const AVATAR_OPTIONS: { id: AvatarId; label: string }[] = [
   { id: 'activity', label: 'Signal' },
 ];
 
-interface AvatarIconProps {
+export interface AvatarIconProps {
   id?: string;
+  avatarId?: string;
   size?: number;
   className?: string;
   style?: React.CSSProperties;
 }
 
-export function AvatarIcon({ id = 'shield', size = 20, className, style }: AvatarIconProps) {
-  const normalized = (id || 'shield').toLowerCase().trim();
+export function AvatarIcon({ id, avatarId, size = 20, className, style }: AvatarIconProps) {
+  const chosen = avatarId || id || 'shield';
+  const normalized = chosen.toLowerCase().trim();
 
   const iconProps = {
     size,

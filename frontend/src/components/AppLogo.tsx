@@ -1,3 +1,8 @@
+// AppLogo.tsx
+// Nocturne AI — Cyber-Alucard Mooncrest (Cybersigilism Cruciform)
+// The official brand symbol: Razor-sharp biomechanical thorns, spiked crescent scythes,
+// and needle cruciform dagger seal with a central cryptographic diamond core.
+
 import React from 'react';
 
 interface LogoProps {
@@ -6,94 +11,98 @@ interface LogoProps {
   style?: React.CSSProperties;
 }
 
-/**
- * Modern geometric luxury tech logo for DataVault AI
- * Interlocking multifaceted zero-knowledge vault prism in Yale Blue (#0D3B66) and Lemon Chiffon (#FAF0CA).
- */
-export function AppLogo({ size = 36, className, style }: LogoProps) {
+export function AppLogo({ size = 26, className, style }: LogoProps) {
   return (
     <svg
       width={size}
       height={size}
-      viewBox="0 0 48 48"
+      viewBox="0 0 32 32"
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
       className={className}
-      style={{ display: 'inline-block', verticalAlign: 'middle', flexShrink: 0, ...style }}
+      style={{
+        display: 'inline-block',
+        verticalAlign: 'middle',
+        flexShrink: 0,
+        ...style,
+      }}
     >
       <defs>
-        {/* Yale Blue Glass Gradients */}
-        <linearGradient id="dv-blue-grad" x1="4" y1="4" x2="44" y2="44" gradientUnits="userSpaceOnUse">
-          <stop offset="0%" stopColor="#1860A3" />
-          <stop offset="50%" stopColor="#0D3B66" />
-          <stop offset="100%" stopColor="#061E34" />
+        <linearGradient id="cyber-chrome-vert" x1="16" y1="1" x2="16" y2="31" gradientUnits="userSpaceOnUse">
+          <stop offset="0%" stopColor="#ffffff" />
+          <stop offset="50%" stopColor="#d1d1d6" />
+          <stop offset="100%" stopColor="#8e8e93" />
         </linearGradient>
-
-        {/* Lemon Chiffon Highlights */}
-        <linearGradient id="dv-chiffon-grad" x1="12" y1="8" x2="36" y2="40" gradientUnits="userSpaceOnUse">
-          <stop offset="0%" stopColor="#FFFDF5" />
-          <stop offset="60%" stopColor="#FAF0CA" />
-          <stop offset="100%" stopColor="#F5E4A8" />
+        <linearGradient id="cyber-chrome-wings" x1="2" y1="2" x2="30" y2="30" gradientUnits="userSpaceOnUse">
+          <stop offset="0%" stopColor="#ffffff" />
+          <stop offset="60%" stopColor="#a1a1a6" />
+          <stop offset="100%" stopColor="#48484a" />
         </linearGradient>
-
-        <linearGradient id="dv-facet-grad" x1="24" y1="4" x2="24" y2="44" gradientUnits="userSpaceOnUse">
-          <stop offset="0%" stopColor="#FAF0CA" stopOpacity="0.95" />
-          <stop offset="100%" stopColor="#0D3B66" stopOpacity="0.35" />
-        </linearGradient>
-
-        <filter id="dv-glow" x="-20%" y="-20%" width="140%" height="140%">
-          <feDropShadow dx="0" dy="2" stdDeviation="3" floodColor="#0D3B66" floodOpacity="0.6" />
-        </filter>
       </defs>
 
-      {/* Outer Hexagonal Shield Matrix (Glass Vault Structure) */}
+      {/* ── Outer Cybersigilism Thorned Barbs & Crescent Wings ── */}
+      {/* Left Upper Thorn Blade */}
       <path
-        d="M24 4L42 14V34L24 44L6 34V14L24 4Z"
-        fill="url(#dv-blue-grad)"
-        stroke="url(#dv-chiffon-grad)"
-        strokeWidth="2"
-        strokeLinejoin="round"
+        d="M16 4C11 4 5 8 3 14C5 12 9 11 12 13C8 10 12 6 16 4Z"
+        fill="url(#cyber-chrome-wings)"
+        stroke="#ffffff"
+        strokeWidth="0.5"
+      />
+      {/* Right Upper Thorn Blade */}
+      <path
+        d="M16 4C21 4 27 8 29 14C27 12 23 11 20 13C24 10 20 6 16 4Z"
+        fill="url(#cyber-chrome-wings)"
+        stroke="#ffffff"
+        strokeWidth="0.5"
       />
 
-      {/* Top Isometric Facet */}
+      {/* Left Lower Scythe Spine with Barbs */}
       <path
-        d="M24 4L42 14L24 24L6 14L24 4Z"
-        fill="#FAF0CA"
-        fillOpacity="0.18"
+        d="M3 14C2 18 5 25 12 28C9 25 8 21 11 18C7 20 5 17 3 14Z"
+        fill="url(#cyber-chrome-wings)"
+        stroke="#ffffff"
+        strokeWidth="0.5"
+      />
+      {/* Right Lower Scythe Spine with Barbs */}
+      <path
+        d="M29 14C30 18 27 25 20 28C23 25 24 21 21 18C25 20 27 17 29 14Z"
+        fill="url(#cyber-chrome-wings)"
+        stroke="#ffffff"
+        strokeWidth="0.5"
       />
 
-      {/* Right Isometric Facet */}
+      {/* ── Central Cybersigilism Cruciform Dagger Spire ── */}
+      {/* Vertical Piercing Blade */}
       <path
-        d="M24 24L42 14V34L24 44V24Z"
-        fill="#061E34"
-        fillOpacity="0.6"
+        d="M16 1L17.5 10L16.8 15.2L16 16L15.2 15.2L14.5 10L16 1Z"
+        fill="#ffffff"
+      />
+      <path
+        d="M16 31L17.5 22L16.8 16.8L16 16L15.2 16.8L14.5 22L16 31Z"
+        fill="url(#cyber-chrome-vert)"
       />
 
-      {/* Left Isometric Facet */}
+      {/* Horizontal Piercing Quillons */}
       <path
-        d="M24 24L6 14V34L24 44V24Z"
-        fill="#1860A3"
-        fillOpacity="0.45"
+        d="M1 16L10 14.5L15.2 15.2L16 16L15.2 16.8L10 17.5L1 16Z"
+        fill="url(#cyber-chrome-vert)"
+      />
+      <path
+        d="M31 16L22 14.5L16.8 15.2L16 16L16.8 16.8L22 17.5L31 16Z"
+        fill="url(#cyber-chrome-vert)"
       />
 
-      {/* Interlocking ZK Core Vault Prism */}
+      {/* ── Diagonal Needle Intersects ── */}
+      <path d="M7 7L11 11M25 7L21 11M7 25L11 21M25 25L21 21" stroke="#ffffff" strokeWidth="1" strokeLinecap="round" />
+
+      {/* ── Center Zero-Knowledge Diamond Core & Sigil Eye ── */}
       <path
-        d="M24 13L33 18.5V29.5L24 35L15 29.5V18.5L24 13Z"
-        fill="url(#dv-blue-grad)"
-        stroke="#FAF0CA"
-        strokeWidth="1.8"
-        strokeLinejoin="round"
+        d="M16 11.5L20.5 16L16 20.5L11.5 16L16 11.5Z"
+        fill="#000000"
+        stroke="#ffffff"
+        strokeWidth="1.25"
       />
-
-      {/* Inner Central Data Key Matrix (Zero-Knowledge Node) */}
-      <circle cx="24" cy="24" r="3.2" fill="#FAF0CA" />
-      <circle cx="24" cy="24" r="1.5" fill="#0D3B66" />
-
-      {/* Subtle Connection Rays */}
-      <line x1="24" y1="4" x2="24" y2="13" stroke="#FAF0CA" strokeWidth="1.4" strokeOpacity="0.75" />
-      <line x1="42" y1="14" x2="33" y2="18.5" stroke="#FAF0CA" strokeWidth="1.4" strokeOpacity="0.75" />
-      <line x1="6" y1="14" x2="15" y2="18.5" stroke="#FAF0CA" strokeWidth="1.4" strokeOpacity="0.75" />
-      <line x1="24" y1="44" x2="24" y2="35" stroke="#FAF0CA" strokeWidth="1.4" strokeOpacity="0.75" />
+      <circle cx="16" cy="16" r="1.75" fill="#ffffff" />
     </svg>
   );
 }
