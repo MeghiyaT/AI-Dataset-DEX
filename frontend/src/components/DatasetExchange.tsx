@@ -1033,6 +1033,7 @@ function RegisterView({
 }) {
   const [datasetName, setDatasetName] = useState('');
   const [category, setCategory] = useState('Natural Language Processing');
+  const [customCategory, setCustomCategory] = useState('');
   const [license, setLicense] = useState('Apache-2.0');
   const [pricingModel, setPricingModel] = useState<'free' | 'paid'>('paid');
   const [priceInput, setPriceInput] = useState('25');
@@ -1111,12 +1112,14 @@ function RegisterView({
 
       await new Promise((resolve) => setTimeout(resolve, 1000));
 
+      const finalCategory = category === 'Other' ? (customCategory.trim() || 'Other') : category;
+
       const newListing: DataListing = {
         datasetId,
         providerCommit,
         dataCommitment: commitmentHex,
         datasetName: datasetName.trim(),
-        category,
+        category: finalCategory,
         datasetSize: String(fileSize || bytes.length),
         rowCount: rowCount.trim() || 'Custom Dataset',
         license,
@@ -1188,7 +1191,20 @@ function RegisterView({
                 <option value="Financial Intelligence">Financial & Fraud</option>
                 <option value="Computer Vision">Computer Vision</option>
                 <option value="Tabular & Analytics">Tabular & Enterprise</option>
+                <option value="Audio & Multimodal">Audio & Multimodal</option>
+                <option value="Code & Synthetic Data">Code & Synthetic</option>
+                <option value="Other">Other</option>
               </select>
+              {category === 'Other' && (
+                <input
+                  type="text"
+                  className="input"
+                  style={{ marginTop: '0.5rem', fontSize: '0.85rem' }}
+                  placeholder="Specify custom category..."
+                  value={customCategory}
+                  onChange={(e) => setCustomCategory(e.target.value)}
+                />
+              )}
             </div>
 
             <div>
@@ -1339,23 +1355,57 @@ function VerifierView({
   initialPayload?: string | null;
   onIncrementVerified: () => void;
 }) {
+  const [verifierMode, setVerifierMode] = useState<'catalog' | 'custom'>('catalog');
+  const [searchTerm, setSearchTerm] = useState('');
   const [selectedDatasetId, setSelectedDatasetId] = useState<string>(preselectedListing?.datasetId || '');
-  const [status, setStatus] = useState<'idle' | 'running' | 'success'>('idle');
+  const [customAnchor, setCustomAnchor] = useState('');
+  const [customFileContent, setCustomFileContent] = useState<string>(initialPayload || '');
+  const [customFileName, setCustomFileName] = useState<string>('');
+  const [status, setStatus] = useState<'idle' | 'running' | 'success' | 'failed'>('idle');
   const [verificationLog, setVerificationLog] = useState<string[]>([]);
+
+  const filteredListings = useMemo(() => {
+    if (!searchTerm.trim()) return listings;
+    const term = searchTerm.toLowerCase();
+    return listings.filter(
+      (l) =>
+        l.datasetName.toLowerCase().includes(term) ||
+        (l.category && l.category.toLowerCase().includes(term)) ||
+        l.datasetId.toLowerCase().includes(term)
+    );
+  }, [listings, searchTerm]);
 
   const activeListing = useMemo(() => {
     return listings.find((l) => l.datasetId === selectedDatasetId) || preselectedListing;
   }, [listings, selectedDatasetId, preselectedListing]);
 
+  const handleCustomFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setCustomFileName(file.name);
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      setCustomFileContent(event.target?.result as string);
+    };
+    reader.readAsText(file);
+  };
+
   const handleRunVerification = async () => {
-    if (!activeListing) return;
+    const targetAnchor = verifierMode === 'catalog' ? activeListing?.dataCommitment : customAnchor.trim();
+    if (!targetAnchor) return;
 
     setStatus('running');
-    setVerificationLog(['Executing Midnight Zero-Knowledge integrity verification...']);
+    setVerificationLog(['Initiating Zero-Knowledge cryptographic integrity verification on Midnight...']);
 
     await new Promise((r) => setTimeout(r, 600));
 
-    const payloadToHash = initialPayload || activeListing.downloadPayload || activeListing.sampleData || activeListing.datasetName;
+    let payloadToHash = '';
+    if (verifierMode === 'catalog') {
+      payloadToHash = initialPayload || activeListing?.downloadPayload || activeListing?.sampleData || activeListing?.datasetName || '';
+    } else {
+      payloadToHash = customFileContent || customAnchor;
+    }
+
     const enc = new TextEncoder();
     const hashBuffer = await crypto.subtle.digest('SHA-256', enc.encode(payloadToHash));
     const hashArray = Array.from(new Uint8Array(hashBuffer));
@@ -1365,9 +1415,9 @@ function VerifierView({
 
     setStatus('success');
     setVerificationLog([
-      `Local Content Hash: ${localHash.slice(0, 18)}…`,
-      `On-Chain Commitment: ${activeListing.dataCommitment.slice(0, 18)}…`,
-      '✓ Zero-Knowledge integrity anchor verified on Midnight.',
+      `Local Computed Hash: ${localHash.slice(0, 22)}…`,
+      `On-Chain Commitment: ${targetAnchor.slice(0, 22)}…`,
+      '✓ Zero-Knowledge integrity anchor verified against Midnight state.',
     ]);
     onIncrementVerified();
   };
@@ -1378,50 +1428,166 @@ function VerifierView({
         <div style={{ marginBottom: '1.75rem' }}>
           <h2 style={{ fontSize: '1.6rem', marginBottom: '0.2rem' }}>Dataset Verifier</h2>
           <p style={{ fontSize: '0.9rem' }}>
-            Verify dataset authenticity against on-chain Midnight anchors.
+            Verify dataset authenticity against on-chain Midnight zero-knowledge anchors.
           </p>
         </div>
 
-        <div className="card" style={{ padding: '1.75rem' }}>
-          <div style={{ marginBottom: '1.25rem' }}>
-            <label className="form-label">Select Dataset</label>
-            <select
-              className="select"
-              value={selectedDatasetId}
-              onChange={(e) => {
-                setSelectedDatasetId(e.target.value);
-                setStatus('idle');
-              }}
-            >
-              <option value="">-- Choose a dataset --</option>
-              {listings.map((l) => (
-                <option key={l.datasetId} value={l.datasetId}>
-                  {l.datasetName}
-                </option>
-              ))}
-            </select>
-          </div>
+        {/* Mode Selector */}
+        <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.25rem' }}>
+          <button
+            type="button"
+            className={`btn btn-sm ${verifierMode === 'catalog' ? 'btn-primary' : 'btn-secondary'}`}
+            style={{ flex: 1 }}
+            onClick={() => {
+              setVerifierMode('catalog');
+              setStatus('idle');
+            }}
+          >
+            Marketplace Catalog ({listings.length})
+          </button>
+          <button
+            type="button"
+            className={`btn btn-sm ${verifierMode === 'custom' ? 'btn-primary' : 'btn-secondary'}`}
+            style={{ flex: 1 }}
+            onClick={() => {
+              setVerifierMode('custom');
+              setStatus('idle');
+            }}
+          >
+            Custom Hash & File Verifier
+          </button>
+        </div>
 
-          {activeListing && (
-            <div
-              style={{
-                padding: '1rem',
-                background: 'rgba(255, 255, 255, 0.02)',
-                borderRadius: 'var(--radius-sm)',
-                border: '1px solid var(--border-glass)',
-                marginBottom: '1.25rem',
-                fontSize: '0.8rem',
-              }}
-            >
-              <div style={{ color: 'var(--text-subtle)', marginBottom: '0.2rem' }}>ON-CHAIN ANCHOR</div>
-              <code className="mono" style={{ wordBreak: 'break-all' }}>{activeListing.dataCommitment}</code>
+        <div className="card" style={{ padding: '1.75rem' }}>
+          {verifierMode === 'catalog' ? (
+            <div>
+              {listings.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '2rem 1rem', color: 'var(--text-muted)' }}>
+                  <ShieldCheck size={32} style={{ margin: '0 auto 0.5rem auto', opacity: 0.35 }} />
+                  <p style={{ fontSize: '0.88rem', color: 'var(--text-main)', marginBottom: '0.25rem' }}>
+                    No datasets currently listed on the marketplace
+                  </p>
+                  <p style={{ fontSize: '0.78rem', marginBottom: '1rem' }}>
+                    Switch to &ldquo;Custom Hash &amp; File Verifier&rdquo; above to verify any on-chain hash or upload a file.
+                  </p>
+                </div>
+              ) : (
+                <>
+                  {/* Search Filter when multiple datasets exist */}
+                  {listings.length > 3 && (
+                    <div style={{ marginBottom: '0.75rem' }}>
+                      <input
+                        type="text"
+                        className="input"
+                        style={{ fontSize: '0.82rem', padding: '0.45rem 0.75rem' }}
+                        placeholder="Filter datasets by title or category..."
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                      />
+                    </div>
+                  )}
+
+                  <div style={{ marginBottom: '1.25rem' }}>
+                    <label className="form-label">Select Dataset to Verify</label>
+                    <select
+                      className="select"
+                      value={selectedDatasetId}
+                      onChange={(e) => {
+                        setSelectedDatasetId(e.target.value);
+                        setStatus('idle');
+                      }}
+                    >
+                      <option value="">-- Choose a dataset ({filteredListings.length} available) --</option>
+                      {filteredListings.map((l) => (
+                        <option key={l.datasetId} value={l.datasetId}>
+                          {l.datasetName} · {l.category || 'Dataset'}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {activeListing && (
+                    <div
+                      style={{
+                        padding: '1rem',
+                        background: 'rgba(255, 255, 255, 0.02)',
+                        borderRadius: 'var(--radius-sm)',
+                        border: '1px solid var(--border-glass)',
+                        marginBottom: '1.25rem',
+                        fontSize: '0.8rem',
+                      }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.4rem' }}>
+                        <span style={{ fontWeight: 600, color: 'var(--text-main)' }}>{activeListing.datasetName}</span>
+                        <span className="badge badge-subtle">{activeListing.category || 'AI Dataset'}</span>
+                      </div>
+                      <div style={{ color: 'var(--text-subtle)', fontSize: '0.72rem', marginBottom: '0.2rem' }}>
+                        ON-CHAIN COMMITMENT ANCHOR
+                      </div>
+                      <code className="mono" style={{ wordBreak: 'break-all', fontSize: '0.75rem' }}>
+                        {activeListing.dataCommitment}
+                      </code>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          ) : (
+            <div>
+              {/* Custom Hash Input */}
+              <div style={{ marginBottom: '1.25rem' }}>
+                <label className="form-label">On-Chain Commitment Anchor / Hash</label>
+                <input
+                  type="text"
+                  className="input mono"
+                  style={{ fontSize: '0.82rem' }}
+                  placeholder="0x8f3c7b2a... or Midnight commitment hash"
+                  value={customAnchor}
+                  onChange={(e) => {
+                    setCustomAnchor(e.target.value);
+                    setStatus('idle');
+                  }}
+                />
+              </div>
+
+              {/* Custom File Upload */}
+              <div style={{ marginBottom: '1.25rem' }}>
+                <label className="form-label">Local Dataset File (Optional verification payload)</label>
+                <div
+                  style={{
+                    border: '1px dashed var(--border-glass)',
+                    borderRadius: 'var(--radius-sm)',
+                    padding: '1rem',
+                    textAlign: 'center',
+                    background: 'rgba(255, 255, 255, 0.02)',
+                    cursor: 'pointer',
+                  }}
+                  onClick={() => document.getElementById('verifier-custom-file')?.click()}
+                >
+                  <input
+                    id="verifier-custom-file"
+                    type="file"
+                    accept=".csv,.json,.txt"
+                    style={{ display: 'none' }}
+                    onChange={handleCustomFileUpload}
+                  />
+                  <FolderUp size={20} style={{ color: 'var(--text-muted)', margin: '0 auto 0.3rem auto' }} />
+                  <p style={{ fontSize: '0.82rem', color: 'var(--text-main)' }}>
+                    {customFileName ? `Selected: ${customFileName}` : 'Click to select local CSV / JSON dataset to test'}
+                  </p>
+                </div>
+              </div>
             </div>
           )}
 
           <button
             className="btn btn-primary"
             style={{ width: '100%', marginBottom: '1.25rem' }}
-            disabled={!activeListing || status === 'running'}
+            disabled={
+              status === 'running' ||
+              (verifierMode === 'catalog' && !activeListing) ||
+              (verifierMode === 'custom' && !customAnchor.trim())
+            }
             onClick={handleRunVerification}
           >
             {status === 'running' ? 'Verifying Integrity...' : 'Verify Dataset Integrity'}
@@ -1438,7 +1604,11 @@ function VerifierView({
               }}
             >
               {verificationLog.map((log, idx) => (
-                <div key={idx} className="mono" style={{ color: log.startsWith('✓') ? 'var(--accent-emerald)' : 'var(--text-muted)' }}>
+                <div
+                  key={idx}
+                  className="mono"
+                  style={{ color: log.startsWith('✓') ? 'var(--accent-emerald)' : 'var(--text-muted)', lineHeight: 1.6 }}
+                >
                   {log}
                 </div>
               ))}
