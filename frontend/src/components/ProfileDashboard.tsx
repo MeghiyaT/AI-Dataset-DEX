@@ -1,25 +1,28 @@
 // ProfileDashboard.tsx
-// Per-wallet account dashboard for Nocturne AI — Profile, Purchased Datasets, My Listings, and Activity.
+// Per-wallet account dashboard for Nocturne AI — My Profile, Purchased Datasets, and My Listings.
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { COPY_FEEDBACK_MS } from '../config';
 import type { RegistryState, DataListing } from '../hooks/useIndexer';
 import type { UserProfileHook, PurchaseRecord } from '../hooks/useUserProfile';
 import type { NavSection } from '../App';
-import { AvatarIcon } from './AvatarIcon';
+import { AvatarIcon, AVATAR_OPTIONS } from './AvatarIcon';
 import { ConfirmModal } from './ConfirmModal';
 import {
+  User,
   Database,
-  History,
   Copy,
   Check,
   Edit2,
   Archive,
+  RotateCcw,
   Trash2,
   ShieldCheck,
   PlusCircle,
   ShoppingBag,
-  Download
+  Download,
+  X,
+  Sparkles
 } from 'lucide-react';
 
 interface Props {
@@ -32,11 +35,11 @@ interface Props {
   onVerifyAcquisition?: (listing: DataListing, payload?: string) => void;
 }
 
-type Tab = 'profile' | 'purchases' | 'listings' | 'transactions';
+type Tab = 'profile' | 'purchases' | 'listings';
 
 function truncateAddr(addr: string): string {
   if (!addr || addr.length < 20) return addr;
-  return `${addr.slice(0, 10)}…${addr.slice(-6)}`;
+  return `${addr.slice(0, 12)}…${addr.slice(-8)}`;
 }
 
 export function ProfileDashboard({
@@ -48,15 +51,24 @@ export function ProfileDashboard({
   onRemoveListing,
   onVerifyAcquisition,
 }: Props) {
-  const [activeTab, setActiveTab] = useState<Tab>('purchases');
+  const [activeTab, setActiveTab] = useState<Tab>('profile');
+  const [showAvatarPicker, setShowAvatarPicker] = useState(false);
   const [editingNickname, setEditingNickname] = useState(false);
   const [nicknameInput, setNicknameInput] = useState(profileHook.profile.nickname);
+  const [bioInput, setBioInput] = useState(profileHook.profile.bio);
+  const [bioSavedFeedback, setBioSavedFeedback] = useState(false);
   const [copied, setCopied] = useState(false);
   const [datasetToRemove, setDatasetToRemove] = useState<DataListing | null>(null);
 
-  const { profile, transactions, purchases, sales, updateProfile } = profileHook;
+  const { profile, purchases, sales, updateProfile } = profileHook;
 
-  // My Listings: Datasets listed by connected wallet
+  // Sync inputs when profile changes
+  useEffect(() => {
+    setNicknameInput(profile.nickname);
+    setBioInput(profile.bio);
+  }, [profile.nickname, profile.bio]);
+
+  // Datasets listed by connected wallet
   const myListings = registryState.listings.filter((l) => {
     if (!walletAddress) return false;
     const cleanAddr = walletAddress.trim().toLowerCase();
@@ -77,6 +89,14 @@ export function ProfileDashboard({
     setEditingNickname(false);
   };
 
+  const saveBio = () => {
+    updateProfile({ bio: bioInput.trim() });
+    setBioSavedFeedback(true);
+    setTimeout(() => setBioSavedFeedback(false), 2000);
+  };
+
+  const isBioDirty = bioInput !== profile.bio;
+
   const handleDownloadPurchase = (p: PurchaseRecord) => {
     const payload = p.downloadPayload || `Dataset: ${p.datasetName}\nID: ${p.datasetId}`;
     const filename = `${p.datasetName.toLowerCase().replace(/[^a-z0-9]+/g, '_')}.${p.format || 'csv'}`;
@@ -92,51 +112,76 @@ export function ProfileDashboard({
   };
 
   return (
-    <div style={{ padding: '2rem 0 4rem 0' }}>
+    <div style={{ padding: '2.5rem 0 4rem 0' }}>
       <div className="container" style={{ maxWidth: '820px' }}>
-        {/* Profile Card */}
-        <div
-          className="card"
-          style={{
-            padding: '1.75rem',
-            marginBottom: '1.75rem',
-            background: 'var(--bg-card)',
-          }}
-        >
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              gap: '1rem',
-              flexWrap: 'wrap',
-            }}
+        {/* Navigation Tabs */}
+        <div style={{ display: 'flex', gap: '0.4rem', marginBottom: '1.75rem', flexWrap: 'wrap' }}>
+          <button
+            className={`btn btn-sm ${activeTab === 'profile' ? 'btn-primary' : 'btn-secondary'}`}
+            onClick={() => setActiveTab('profile')}
           >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-              <div
-                style={{
-                  width: '56px',
-                  height: '56px',
-                  borderRadius: '50%',
-                  background: 'rgba(255, 255, 255, 0.06)',
-                  border: '1px solid var(--border-glass)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  color: 'var(--text-main)',
-                }}
-              >
-                <AvatarIcon avatarId={profile.avatarId} size={28} />
+            <User size={14} /> My Profile
+          </button>
+          <button
+            className={`btn btn-sm ${activeTab === 'purchases' ? 'btn-primary' : 'btn-secondary'}`}
+            onClick={() => setActiveTab('purchases')}
+          >
+            <ShoppingBag size={14} /> Purchased Datasets ({purchases.length})
+          </button>
+          <button
+            className={`btn btn-sm ${activeTab === 'listings' ? 'btn-primary' : 'btn-secondary'}`}
+            onClick={() => setActiveTab('listings')}
+          >
+            <Database size={14} /> My Listings ({myListings.length})
+          </button>
+        </div>
+
+        {/* ── TAB 1: MY PROFILE ────────────────────────────────────────────── */}
+        {activeTab === 'profile' && (
+          <div className="card" style={{ padding: '2rem' }}>
+            <div style={{ display: 'flex', gap: '2rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
+              {/* Avatar Icon Column */}
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.6rem' }}>
+                <div
+                  onClick={() => setShowAvatarPicker(true)}
+                  style={{
+                    width: '84px',
+                    height: '84px',
+                    borderRadius: '50%',
+                    background: 'rgba(255, 255, 255, 0.04)',
+                    border: '1.5px solid rgba(255, 255, 255, 0.18)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: '#ffffff',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s ease',
+                    boxShadow: '0 4px 20px rgba(0, 0, 0, 0.5)',
+                  }}
+                  title="Click to choose profile avatar"
+                >
+                  <AvatarIcon avatarId={profile.avatarId} size={38} />
+                </div>
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-sm"
+                  style={{ fontSize: '0.74rem', padding: '0.2rem 0.5rem', color: 'var(--text-muted)' }}
+                  onClick={() => setShowAvatarPicker(true)}
+                >
+                  Change Icon
+                </button>
               </div>
 
-              <div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+              {/* Profile Details Column */}
+              <div style={{ flex: 1, minWidth: '260px' }}>
+                {/* Single Nickname Row */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
                   {editingNickname ? (
-                    <div style={{ display: 'flex', gap: '0.4rem' }}>
+                    <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
                       <input
                         type="text"
                         className="input"
-                        style={{ padding: '0.25rem 0.5rem', fontSize: '0.85rem', height: '32px' }}
+                        style={{ padding: '0.3rem 0.65rem', fontSize: '1rem', height: '36px' }}
                         value={nicknameInput}
                         onChange={(e) => setNicknameInput(e.target.value)}
                         placeholder="Enter nickname..."
@@ -145,122 +190,124 @@ export function ProfileDashboard({
                       <button className="btn btn-primary btn-sm" onClick={saveNickname}>
                         Save
                       </button>
+                      <button className="btn btn-secondary btn-sm" onClick={() => setEditingNickname(false)}>
+                        Cancel
+                      </button>
                     </div>
                   ) : (
                     <>
-                      <h2 style={{ fontSize: '1.25rem', color: 'var(--text-main)' }}>
+                      <h2 style={{ fontSize: '1.4rem', color: 'var(--text-main)' }}>
                         {profile.nickname || 'AI Researcher'}
                       </h2>
                       <button
                         onClick={() => setEditingNickname(true)}
-                        style={{ background: 'transparent', border: 'none', color: 'var(--text-subtle)', cursor: 'pointer' }}
+                        style={{ background: 'transparent', border: 'none', color: 'var(--text-subtle)', cursor: 'pointer', padding: '0.2rem' }}
+                        title="Edit nickname"
                       >
-                        <Edit2 size={13} />
+                        <Edit2 size={15} />
                       </button>
                     </>
                   )}
                 </div>
 
+                {/* Wallet Address Box */}
+                <div style={{ marginBottom: '1.25rem' }}>
+                  <label className="form-label">Connected Wallet Address</label>
+                  <div
+                    style={{
+                      background: 'rgba(255, 255, 255, 0.02)',
+                      border: '1px solid var(--border-subtle)',
+                      borderRadius: 'var(--radius-sm)',
+                      padding: '0.6rem 0.85rem',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      fontSize: '0.82rem',
+                    }}
+                  >
+                    <span className="mono" style={{ color: 'var(--text-main)' }}>{truncateAddr(walletAddress)}</span>
+                    <button
+                      onClick={copyAddress}
+                      style={{
+                        background: 'transparent',
+                        border: 'none',
+                        color: copied ? 'var(--accent-emerald)' : 'var(--text-subtle)',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.3rem',
+                      }}
+                      title="Copy full address"
+                    >
+                      {copied ? <Check size={14} /> : <Copy size={14} />}
+                      <span style={{ fontSize: '0.72rem' }}>{copied ? 'Copied' : 'Copy'}</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Bio Textarea */}
+                <div style={{ marginBottom: '1.5rem' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.35rem' }}>
+                    <label className="form-label" style={{ margin: 0 }}>Bio / Research Focus</label>
+                    {bioSavedFeedback && (
+                      <span style={{ fontSize: '0.75rem', color: 'var(--accent-emerald)', display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
+                        <Check size={12} /> Saved
+                      </span>
+                    )}
+                  </div>
+                  <textarea
+                    className="textarea"
+                    rows={3}
+                    value={bioInput}
+                    onChange={(e) => setBioInput(e.target.value)}
+                    onBlur={() => {
+                      if (isBioDirty) saveBio();
+                    }}
+                    placeholder="Describe your research focus or dataset catalog..."
+                  />
+                  {isBioDirty && (
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '0.4rem' }}>
+                      <button className="btn btn-secondary btn-sm" onClick={saveBio}>
+                        Save Bio
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                {/* Overview Metrics Bar (Monochromatic Theme) */}
                 <div
                   style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '0.4rem',
-                    marginTop: '0.2rem',
-                    fontSize: '0.8rem',
-                    color: 'var(--text-muted)',
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(3, 1fr)',
+                    gap: '0.75rem',
+                    padding: '1rem',
+                    background: 'rgba(255, 255, 255, 0.02)',
+                    borderRadius: 'var(--radius-sm)',
+                    border: '1px solid var(--border-subtle)',
                   }}
                 >
-                  <span className="mono">{truncateAddr(walletAddress)}</span>
-                  <button
-                    onClick={copyAddress}
-                    style={{
-                      background: 'transparent',
-                      border: 'none',
-                      color: copied ? 'var(--accent-emerald)' : 'var(--text-subtle)',
-                      cursor: 'pointer',
-                    }}
-                    title="Copy address"
-                  >
-                    {copied ? <Check size={13} /> : <Copy size={13} />}
-                  </button>
+                  <div style={{ textAlign: 'center' }}>
+                    <span style={{ fontSize: '0.7rem', color: 'var(--text-subtle)', display: 'block', letterSpacing: '0.04em' }}>ACQUIRED</span>
+                    <strong style={{ fontSize: '1.1rem', color: '#ffffff' }}>{purchases.length}</strong>
+                  </div>
+                  <div style={{ textAlign: 'center' }}>
+                    <span style={{ fontSize: '0.7rem', color: 'var(--text-subtle)', display: 'block', letterSpacing: '0.04em' }}>LISTINGS</span>
+                    <strong style={{ fontSize: '1.1rem', color: '#ffffff' }}>{myListings.length}</strong>
+                  </div>
+                  <div style={{ textAlign: 'center' }}>
+                    <span style={{ fontSize: '0.7rem', color: 'var(--text-subtle)', display: 'block', letterSpacing: '0.04em' }}>REVENUE</span>
+                    <strong style={{ fontSize: '1.1rem', color: '#ffffff' }}>
+                      {totalRevenue}{' '}
+                      <span style={{ fontSize: '0.75rem', fontWeight: 400, color: 'var(--text-muted)' }}>tDUST</span>
+                    </strong>
+                  </div>
                 </div>
               </div>
             </div>
-
-            {/* Quick Metrics */}
-            <div style={{ display: 'flex', gap: '0.5rem' }}>
-              <div
-                style={{
-                  padding: '0.5rem 0.9rem',
-                  background: 'rgba(255, 255, 255, 0.02)',
-                  borderRadius: 'var(--radius-sm)',
-                  border: '1px solid var(--border-subtle)',
-                  textAlign: 'center',
-                }}
-              >
-                <span style={{ fontSize: '0.7rem', color: 'var(--text-subtle)', display: 'block' }}>ACQUIRED</span>
-                <strong style={{ fontSize: '1rem', color: 'var(--text-main)' }}>{purchases.length}</strong>
-              </div>
-
-              <div
-                style={{
-                  padding: '0.5rem 0.9rem',
-                  background: 'rgba(255, 255, 255, 0.02)',
-                  borderRadius: 'var(--radius-sm)',
-                  border: '1px solid var(--border-subtle)',
-                  textAlign: 'center',
-                }}
-              >
-                <span style={{ fontSize: '0.7rem', color: 'var(--text-subtle)', display: 'block' }}>LISTINGS</span>
-                <strong style={{ fontSize: '1rem', color: 'var(--text-main)' }}>{myListings.length}</strong>
-              </div>
-
-              <div
-                style={{
-                  padding: '0.5rem 0.9rem',
-                  background: 'rgba(255, 255, 255, 0.02)',
-                  borderRadius: 'var(--radius-sm)',
-                  border: '1px solid var(--border-subtle)',
-                  textAlign: 'center',
-                }}
-              >
-                <span style={{ fontSize: '0.7rem', color: 'var(--text-subtle)', display: 'block' }}>REVENUE</span>
-                <strong style={{ fontSize: '1rem', color: 'var(--accent-amber)' }}>{totalRevenue} tDUST</strong>
-              </div>
-            </div>
           </div>
-        </div>
+        )}
 
-        {/* Tab Buttons */}
-        <div style={{ display: 'flex', gap: '0.4rem', marginBottom: '1.5rem', flexWrap: 'wrap' }}>
-          <button
-            className={`btn btn-sm ${activeTab === 'purchases' ? 'btn-primary' : 'btn-secondary'}`}
-            onClick={() => setActiveTab('purchases')}
-          >
-            Purchases ({purchases.length})
-          </button>
-          <button
-            className={`btn btn-sm ${activeTab === 'listings' ? 'btn-primary' : 'btn-secondary'}`}
-            onClick={() => setActiveTab('listings')}
-          >
-            My Listings ({myListings.length})
-          </button>
-          <button
-            className={`btn btn-sm ${activeTab === 'transactions' ? 'btn-primary' : 'btn-secondary'}`}
-            onClick={() => setActiveTab('transactions')}
-          >
-            Activity ({transactions.length})
-          </button>
-          <button
-            className={`btn btn-sm ${activeTab === 'profile' ? 'btn-primary' : 'btn-secondary'}`}
-            onClick={() => setActiveTab('profile')}
-          >
-            Settings
-          </button>
-        </div>
-
-        {/* Purchases */}
+        {/* ── TAB 2: PURCHASED DATASETS ────────────────────────────────────── */}
         {activeTab === 'purchases' && (
           <div>
             {purchases.length === 0 ? (
@@ -268,7 +315,7 @@ export function ProfileDashboard({
                 <ShoppingBag size={32} style={{ margin: '0 auto 0.75rem auto', opacity: 0.35 }} />
                 <h3 style={{ color: 'var(--text-main)', marginBottom: '0.25rem' }}>No datasets acquired</h3>
                 <p style={{ fontSize: '0.85rem', marginBottom: '1.25rem' }}>
-                  Datasets you purchase on the marketplace will appear here for instant download.
+                  Datasets you purchase on the marketplace will appear here for instant deliverable downloads.
                 </p>
                 <button
                   className="btn btn-primary btn-sm"
@@ -297,7 +344,7 @@ export function ProfileDashboard({
                       <div>
                         <div style={{ display: 'flex', gap: '0.4rem', marginBottom: '0.25rem' }}>
                           <span className="badge badge-green">Purchased</span>
-                          <span className="badge badge-amber">{p.price} {p.currency}</span>
+                          <span className="badge badge-subtle">{p.price} {p.currency}</span>
                         </div>
                         <h4 style={{ fontSize: '1rem' }}>{p.datasetName}</h4>
                         <div style={{ fontSize: '0.75rem', color: 'var(--text-subtle)', marginTop: '0.25rem' }}>
@@ -330,7 +377,7 @@ export function ProfileDashboard({
           </div>
         )}
 
-        {/* Listings */}
+        {/* ── TAB 3: MY LISTINGS ────────────────────────────────────────────── */}
         {activeTab === 'listings' && (
           <div>
             {myListings.length === 0 ? (
@@ -364,7 +411,7 @@ export function ProfileDashboard({
                   >
                     <div>
                       <div style={{ display: 'flex', gap: '0.4rem', marginBottom: '0.25rem' }}>
-                        <span className="badge badge-amber">
+                        <span className="badge badge-subtle">
                           {l.price && l.price !== '0' ? `${l.price} tDUST` : 'Free'}
                         </span>
                         <span className={`badge ${l.isActive ? 'badge-green' : 'badge-subtle'}`}>
@@ -382,8 +429,10 @@ export function ProfileDashboard({
                         <button
                           className="btn btn-secondary btn-sm"
                           onClick={() => onToggleArchive(l.datasetId)}
+                          style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}
                         >
-                          <Archive size={13} /> {l.isActive ? 'Archive' : 'Activate'}
+                          {l.isActive ? <Archive size={13} /> : <RotateCcw size={13} />}
+                          <span>{l.isActive ? 'Archive' : 'Restore'}</span>
                         </button>
                       )}
                       {onRemoveListing && (
@@ -403,71 +452,107 @@ export function ProfileDashboard({
           </div>
         )}
 
-        {/* Activity */}
-        {activeTab === 'transactions' && (
-          <div>
-            {transactions.length === 0 ? (
-              <div className="card" style={{ textAlign: 'center', padding: '3.5rem 1.5rem', color: 'var(--text-muted)' }}>
-                <History size={32} style={{ margin: '0 auto 0.75rem auto', opacity: 0.35 }} />
-                <h3 style={{ color: 'var(--text-main)', marginBottom: '0.25rem' }}>No activity yet</h3>
-                <p style={{ fontSize: '0.85rem' }}>
-                  Transactions, listings, and purchases will appear here.
-                </p>
+        {/* ── Sleek Avatar Selector Modal ─────────────────────────────────── */}
+        {showAvatarPicker && (
+          <div
+            style={{
+              position: 'fixed',
+              inset: 0,
+              zIndex: 1000,
+              background: 'rgba(0, 0, 0, 0.75)',
+              backdropFilter: 'blur(12px)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: '1.5rem',
+            }}
+            onClick={() => setShowAvatarPicker(false)}
+          >
+            <div
+              className="card"
+              style={{
+                maxWidth: '440px',
+                width: '100%',
+                background: '#0d0d12',
+                border: '1px solid var(--border-glass)',
+                padding: '1.75rem',
+                boxShadow: '0 24px 60px rgba(0, 0, 0, 0.9)',
+              }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <Sparkles size={16} />
+                  <h3 style={{ fontSize: '1.1rem', margin: 0, color: 'var(--text-main)' }}>Select Profile Avatar</h3>
+                </div>
+                <button
+                  onClick={() => setShowAvatarPicker(false)}
+                  style={{ background: 'transparent', border: 'none', color: 'var(--text-subtle)', cursor: 'pointer' }}
+                >
+                  <X size={18} />
+                </button>
               </div>
-            ) : (
-              <div className="card" style={{ padding: '0.75rem' }}>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                  {transactions.map((tx) => (
-                    <div
-                      key={tx.id}
+
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(4, 1fr)',
+                  gap: '0.65rem',
+                  marginBottom: '1.5rem',
+                }}
+              >
+                {AVATAR_OPTIONS.map((item) => {
+                  const isSelected = (profile.avatarId || 'fingerprint').toLowerCase() === item.id.toLowerCase();
+                  return (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() => {
+                        updateProfile({ avatarId: item.id });
+                        setShowAvatarPicker(false);
+                      }}
                       style={{
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center',
-                        padding: '0.75rem 1rem',
-                        background: 'rgba(255, 255, 255, 0.02)',
+                        background: isSelected ? 'rgba(255, 255, 255, 0.12)' : 'rgba(255, 255, 255, 0.03)',
+                        border: isSelected ? '1.5px solid #ffffff' : '1px solid var(--border-subtle)',
                         borderRadius: 'var(--radius-sm)',
-                        fontSize: '0.82rem',
+                        padding: '0.75rem 0.4rem',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        gap: '0.35rem',
+                        cursor: 'pointer',
+                        transition: 'all 0.15s ease',
+                        color: isSelected ? '#ffffff' : 'var(--text-muted)',
                       }}
                     >
-                      <div>
-                        <strong>{tx.datasetName}</strong>
-                        <span style={{ color: 'var(--text-subtle)', display: 'block', fontSize: '0.74rem' }}>
-                          {tx.type.toUpperCase()} · {new Date(tx.date).toLocaleDateString()}
-                        </span>
+                      <div
+                        style={{
+                          width: '32px',
+                          height: '32px',
+                          borderRadius: '50%',
+                          background: isSelected ? 'rgba(255, 255, 255, 0.18)' : 'rgba(255, 255, 255, 0.04)',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                        }}
+                      >
+                        <AvatarIcon avatarId={item.id} size={17} />
                       </div>
-                      {tx.price && <span className="badge badge-amber">{tx.price}</span>}
-                    </div>
-                  ))}
-                </div>
+                      <span style={{ fontSize: '0.66rem', fontWeight: isSelected ? 600 : 400, whiteSpace: 'nowrap' }}>
+                        {item.label}
+                      </span>
+                    </button>
+                  );
+                })}
               </div>
-            )}
-          </div>
-        )}
 
-        {/* Settings */}
-        {activeTab === 'profile' && (
-          <div className="card" style={{ padding: '1.75rem' }}>
-            <h3 style={{ marginBottom: '1.25rem' }}>Profile Settings</h3>
-            <div style={{ marginBottom: '1rem' }}>
-              <label className="form-label">Display Nickname</label>
-              <input
-                type="text"
-                className="input"
-                value={profile.nickname}
-                onChange={(e) => updateProfile({ nickname: e.target.value })}
-                placeholder="e.g. Satoshi_ML"
-              />
-            </div>
-            <div>
-              <label className="form-label">Bio / Research Description</label>
-              <textarea
-                className="textarea"
-                rows={3}
-                value={profile.bio}
-                onChange={(e) => updateProfile({ bio: e.target.value })}
-                placeholder="Describe your research or dataset focus..."
-              />
+              <button
+                className="btn btn-secondary"
+                style={{ width: '100%' }}
+                onClick={() => setShowAvatarPicker(false)}
+              >
+                Close
+              </button>
             </div>
           </div>
         )}
